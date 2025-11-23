@@ -1,0 +1,7 @@
+# Ignore actual .env file (contains secrets)
+.env
+
+# Ignore any data directories
+postgres/
+postgres-data/
+model-cache/
