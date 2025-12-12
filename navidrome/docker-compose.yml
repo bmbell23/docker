@@ -1,0 +1,56 @@
+name: navidrome
+
+services:
+  navidrome:
+    container_name: navidrome
+    image: deluan/navidrome:latest
+    restart: unless-stopped
+    ports:
+      - "4533:4533"
+    environment:
+      # Basic Configuration
+      ND_SCANSCHEDULE: "@every 5m"
+      ND_LOGLEVEL: info
+      ND_SESSIONTIMEOUT: 24h
+      ND_BASEURL: ""
+      ND_SCANINTERVAL: 5m
+
+      # Performance Settings
+      ND_TRANSCODINGCACHESIZE: 100MB
+      ND_IMAGECACHESIZE: 100MB
+
+      # Features
+      ND_ENABLETRANSCODINGCONFIG: "true"
+      ND_ENABLEDOWNLOADS: "true"
+      ND_ENABLESHARING: "true"
+      ND_ENABLESTARRATING: "true"
+
+      # Paths (internal container paths)
+      ND_MUSICFOLDER: /music
+      ND_DATAFOLDER: /data
+      ND_CACHEFOLDER: /cache
+
+    volumes:
+      # Music library - READ ONLY for safety
+      - /mnt/boston/media/music:/music:ro
+      # Data directory (database, config)
+      - ${DATA_LOCATION}:/data
+      # Cache directory (transcoding cache, image cache)
+      - ${CACHE_LOCATION}:/cache
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits (Navidrome is lightweight)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+

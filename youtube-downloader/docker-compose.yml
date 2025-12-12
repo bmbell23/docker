@@ -1,0 +1,35 @@
+name: youtube-downloader
+
+services:
+  yt-dlp-web:
+    container_name: yt-dlp-web
+    image: marcobaobao/yt-dlp-webui:latest
+    restart: unless-stopped
+    ports:
+      - "8998:3033"
+    environment:
+      # Download settings
+      DOWNLOAD_PATH: /downloads
+
+    volumes:
+      # Downloads go here
+      - ${DOWNLOAD_LOCATION}:/downloads
+      # Config/database
+      - ${DATA_LOCATION}:/app/data
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
