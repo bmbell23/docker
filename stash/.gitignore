@@ -1,0 +1,10 @@
+# Ignore environment file with local paths
+.env
+
+# Ignore any local data directories if created here
+config/
+generated/
+metadata/
+cache/
+data/
+

@@ -1,0 +1,31 @@
+name: stash
+
+services:
+  stash:
+    container_name: stash
+    image: stashapp/stash:latest
+    restart: unless-stopped
+    ports:
+      - "9999:9999"
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    environment:
+      - STASH_STASH=/data/
+      - STASH_GENERATED=/generated/
+      - STASH_METADATA=/metadata/
+      - STASH_CACHE=/cache/
+    volumes:
+      # Configuration and database
+      - ${CONFIG_LOCATION}:/root/.stash
+      # Media library - your content
+      - /mnt/boston/media/other:/data:ro
+      # Generated content (thumbnails, previews, etc.)
+      - ${GENERATED_LOCATION}:/generated
+      # Metadata storage
+      - ${METADATA_LOCATION}:/metadata
+      # Cache
+      - ${CACHE_LOCATION}:/cache
+
