@@ -1,0 +1,40 @@
+name: calibre-web
+
+services:
+  calibre-web:
+    container_name: calibre-web
+    image: lscr.io/linuxserver/calibre-web:latest
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - DOCKER_MODS=linuxserver/mods:universal-calibre  # Adds ebook conversion tools
+      - OAUTHLIB_RELAX_TOKEN_SCOPE=1  # For OAuth if needed
+
+    volumes:
+      # Configuration and database
+      - ${CONFIG_LOCATION}:/config
+
+      # Books library - needs write access for metadata.db
+      - ${BOOKS_LOCATION}:/books
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits (Calibre-Web is lightweight)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
