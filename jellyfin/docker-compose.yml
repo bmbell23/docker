@@ -1,0 +1,49 @@
+name: jellyfin
+
+services:
+  jellyfin:
+    container_name: jellyfin
+    image: jellyfin/jellyfin:latest
+    restart: unless-stopped
+    ports:
+      - "8096:8096"      # HTTP web interface
+      - "8920:8920"      # HTTPS web interface (optional)
+      - "7359:7359/udp"  # Service discovery
+      - "1900:1900/udp"  # DLNA discovery
+    
+    environment:
+      # Jellyfin doesn't require many env vars, most config is done via web UI
+      - JELLYFIN_PublishedServerUrl=http://localhost:8096
+    
+    volumes:
+      # Configuration and data
+      - ${CONFIG_LOCATION}:/config
+      - ${CACHE_LOCATION}:/cache
+      
+      # Media libraries
+      - /mnt/boston/media/videos:/media/videos:ro
+      
+      # Optional: Add more media libraries as needed
+      # - /mnt/boston/media/music:/media/music:ro
+      # - /mnt/boston/media/pictures:/media/pictures:ro
+    
+    # Hardware acceleration (Intel QuickSync)
+    devices:
+      - /dev/dri:/dev/dri
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+

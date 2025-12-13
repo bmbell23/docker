@@ -1,0 +1,59 @@
+name: torrents
+
+services:
+  # VPN container using Mullvad WireGuard
+  vpn:
+    container_name: mullvad-vpn
+    image: lscr.io/linuxserver/wireguard:latest
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ./se-got-wg-008.conf:/config/wg_confs/wg0.conf:ro
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+    restart: unless-stopped
+    networks:
+      - vpn_network
+    ports:
+      # qBittorrent Web UI
+      - "${WEBUI_PORT}:8080"
+      # qBittorrent connection port
+      - "6881:6881"
+      - "6881:6881/udp"
+
+  # qBittorrent running through VPN
+  qbittorrent:
+    container_name: qbittorrent
+    image: lscr.io/linuxserver/qbittorrent:latest
+    network_mode: "service:vpn"  # Route all traffic through VPN
+    depends_on:
+      - vpn
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - WEBUI_PORT=8080
+    volumes:
+      - ${CONFIG_LOCATION}:/config
+      - ${DOWNLOAD_LOCATION}:/downloads
+      - ./watch:/watch
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  vpn_network:
+    driver: bridge
+
