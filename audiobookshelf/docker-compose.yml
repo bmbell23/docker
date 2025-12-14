@@ -1,0 +1,41 @@
+name: audiobookshelf
+
+services:
+  audiobookshelf:
+    container_name: audiobookshelf
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    restart: unless-stopped
+    ports:
+      - "13378:80"
+
+    environment:
+      - TZ=America/New_York
+
+    volumes:
+      # Config directory (database, users, libraries, settings)
+      - ${DATA_LOCATION}:/config
+      
+      # Metadata directory (cache, streams, covers, downloads, backups, logs)
+      - ${DATA_LOCATION}/metadata:/metadata
+      
+      # Audiobooks library - Audiobookshelf will scan this directory
+      - ${AUDIOBOOKS_LOCATION}:/audiobooks
+      
+      # Podcasts library - Optional, for podcast support
+      - ${PODCASTS_LOCATION}:/podcasts
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
