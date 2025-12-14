@@ -1,0 +1,36 @@
+name: kavita
+
+services:
+  kavita:
+    container_name: kavita
+    image: jvmilazz0/kavita:latest
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+
+    environment:
+      - TZ=America/New_York
+
+    volumes:
+      # Data directory (database, config, cache)
+      - ${DATA_LOCATION}:/kavita/config
+
+      # Books library - Kavita will scan this directory
+      - ${BOOKS_LOCATION}:/books
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
