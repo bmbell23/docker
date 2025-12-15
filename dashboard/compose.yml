@@ -3,33 +3,35 @@ name: dashboard
 services:
   dashboard:
     container_name: dashboard
-    image: nginx:alpine
+    build: .
     restart: unless-stopped
     ports:
-      - "8001:80"
-    
+      - "8001:5000"
+
     volumes:
-      - ./index.html:/usr/share/nginx/html/index.html:ro
-    
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /home/brandon/projects/docker:/home/brandon/projects/docker:ro
+
     environment:
       - TZ=America/New_York
-    
+      - FLASK_ENV=production
+
     # Resource limits
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 64M
+          cpus: '0.5'
+          memory: 256M
         reservations:
           cpus: '0.1'
-          memory: 16M
-    
+          memory: 64M
+
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 10s
 
 networks:
   default:
