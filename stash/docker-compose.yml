@@ -29,3 +29,13 @@ services:
       # Cache
       - ${CACHE_LOCATION}:/cache
 
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+

@@ -71,3 +71,8 @@ Thumbs.db
 *.bak
 *.backup
 
+# VPN configuration files (contain private keys)
+*.conf
+!**/example.conf
+!**/template.conf
+

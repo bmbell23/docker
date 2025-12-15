@@ -1,0 +1,27 @@
+name: jackett
+
+services:
+  jackett:
+    container_name: jackett
+    image: lscr.io/linuxserver/jackett:latest
+    restart: unless-stopped
+    network_mode: "container:mullvad-vpn"  # Route through VPN (shares network with mullvad-vpn)
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - AUTO_UPDATE=true
+    volumes:
+      - ${CONFIG_LOCATION}:/config
+      - ${DOWNLOAD_LOCATION}:/downloads
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+

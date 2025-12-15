@@ -3,7 +3,7 @@
 ## Problem
 Docker containers were not accessible externally (192.168.0.158:PORT or 100.123.154.40:PORT) even though:
 - Localhost access worked fine
-- UFW was configured correctly  
+- UFW was configured correctly
 - Docker was creating NAT rules
 - docker-proxy processes were running
 
@@ -37,8 +37,15 @@ networks:
 - Test external access: `curl -I http://192.168.0.158:PORT`
 
 ## Applied To
-- ✅ Flood torrent setup (172.32.0.0/16)
+- ✅ Torrents setup (qBittorrent + Mullvad VPN + Jackett) (172.32.0.0/16)
 - Future containers should use 172.33.0.0/16, 172.34.0.0/16, etc.
 
-Date: 2025-12-13
+## DNS Fix for VPN Containers
+When using WireGuard VPN containers, Mullvad's DNS server (100.64.0.63) may not work properly.
+Solution: Change DNS in WireGuard config to use public DNS servers:
+```
+DNS = 8.8.8.8,8.8.4.4,1.1.1.1
+```
+
+Date: 2025-12-15
 Status: WORKING ✅
