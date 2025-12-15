@@ -1,0 +1,37 @@
+name: dashboard
+
+services:
+  dashboard:
+    container_name: dashboard
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "8001:80"
+    
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+    
+    environment:
+      - TZ=America/New_York
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+        reservations:
+          cpus: '0.1'
+          memory: 16M
+    
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+networks:
+  default:
+    name: dashboard_network
+
