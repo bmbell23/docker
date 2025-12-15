@@ -1,0 +1,81 @@
+name: romm
+
+services:
+  romm:
+    container_name: romm
+    image: rommapp/romm:latest
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+
+    environment:
+      - DB_HOST=romm-db
+      - DB_NAME=romm
+      - DB_USER=romm-user
+      - DB_PASSWD=romm-password
+      - ROMM_AUTH_SECRET_KEY=change-this-to-a-random-secret-key-please
+      - IGDB_CLIENT_ID=
+      - IGDB_CLIENT_SECRET=
+
+    volumes:
+      # Game library - RomM will scan this directory
+      - ${GAMES_LOCATION}:/romm/library
+
+      # Resources (cover art, screenshots, metadata)
+      - ${RESOURCES_LOCATION}:/romm/resources
+
+      # Config (database, settings)
+      - ${CONFIG_LOCATION}:/romm/config
+
+    depends_on:
+      - romm-db
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  romm-db:
+    container_name: romm-db
+    image: mariadb:latest
+    restart: unless-stopped
+
+    environment:
+      - MYSQL_ROOT_PASSWORD=romm-root-password
+      - MYSQL_DATABASE=romm
+      - MYSQL_USER=romm-user
+      - MYSQL_PASSWORD=romm-password
+
+    volumes:
+      - romm-db-data:/var/lib/mysql
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+volumes:
+  romm-db-data:
+

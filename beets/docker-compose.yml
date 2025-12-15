@@ -1,0 +1,42 @@
+name: beets
+
+services:
+  beets:
+    container_name: beets
+    image: lscr.io/linuxserver/beets:latest
+    restart: unless-stopped
+    
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+
+    volumes:
+      # Config directory (beets config, database)
+      - ${CONFIG_LOCATION}:/config
+
+      # Music library (read-write so beets can organize/tag)
+      - ${MUSIC_LOCATION}:/music
+
+      # Optional: Downloads directory for importing new music
+      - /mnt/boston/media/downloads:/downloads
+
+    ports:
+      - "8337:8337"  # Web interface (if enabled)
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
