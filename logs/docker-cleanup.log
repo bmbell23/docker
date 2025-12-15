@@ -739,3 +739,18 @@
 [2025-12-14 18:00:01] Immich is healthy (all 4 containers running, API responding)
 [2025-12-14 18:00:01] === Docker Cleanup Script Completed ===
 
+[2025-12-15 00:00:01] === Docker Cleanup Script Started ===
+[2025-12-15 00:00:01] Checking Docker daemon health...
+[2025-12-15 00:00:01] Docker daemon is healthy
+[2025-12-15 00:00:01] Checking for stale docker-proxy processes...
+[2025-12-15 00:00:01] WARNING: Found stale docker-proxy processes for port 2283: 537750
+537758
+[2025-12-15 00:00:02] Immich containers are running, proxies are legitimate
+[2025-12-15 00:00:02] Performing Docker cleanup...
+[2025-12-15 00:00:02] Docker system cleanup completed
+[2025-12-15 00:00:02]   Total reclaimed space: 0B
+[2025-12-15 00:00:02] Docker network cleanup completed
+[2025-12-15 00:00:02] Checking Immich service health...
+[2025-12-15 00:00:02] Immich is healthy (all 4 containers running, API responding)
+[2025-12-15 00:00:02] === Docker Cleanup Script Completed ===
+
