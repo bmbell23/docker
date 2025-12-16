@@ -1,11 +1,32 @@
 name: jackett
 
 services:
+  # FlareSolverr - Cloudflare bypass for indexers like 1337x
+  flaresolverr:
+    container_name: flaresolverr
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    restart: unless-stopped
+    network_mode: "container:mullvad-vpn"  # Route through VPN
+    environment:
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
   jackett:
     container_name: jackett
     image: lscr.io/linuxserver/jackett:latest
     restart: unless-stopped
     network_mode: "container:mullvad-vpn"  # Route through VPN (shares network with mullvad-vpn)
+    depends_on:
+      - flaresolverr
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
