@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🐳 Docker Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐳</text></svg>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -142,14 +143,19 @@
             color: var(--primary-orange);
             font-size: 0.8rem;
             font-family: 'Monaco', 'Menlo', monospace;
+        }
+
+        .service-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 0.75rem;
-            display: block;
+            gap: 0.5rem;
         }
 
         .service-actions {
             display: flex;
             gap: 0.5rem;
-            margin-top: 0.75rem;
         }
 
         .action-btn {
@@ -170,7 +176,8 @@
         }
 
         .action-btn i {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
+            flex-shrink: 0;
         }
 
         .restart-btn {
@@ -192,6 +199,34 @@
 
         .recreate-btn:hover:not(:disabled) {
             background-color: var(--light-orange);
+            color: var(--black);
+        }
+
+        .scan-btn {
+            background-color: transparent;
+            color: #4CAF50;
+            border: 1px solid #4CAF50;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.7rem;
+            white-space: nowrap;
+        }
+
+        .scan-btn:hover:not(:disabled) {
+            background-color: #4CAF50;
+            color: var(--black);
+        }
+
+        .download-btn {
+            background-color: transparent;
+            color: #2196F3;
+            border: 1px solid #2196F3;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.7rem;
+            white-space: nowrap;
+        }
+
+        .download-btn:hover:not(:disabled) {
+            background-color: #2196F3;
             color: var(--black);
         }
 
@@ -264,8 +299,10 @@
                             <span class="service-name">GreatReads (Prod)</span>
                         </div>
                         <div class="service-description">Book Tracking - Production</div>
-                        <div class="service-url">:8007</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8007</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('greatreads-prod')">
                             <i class="fas fa-redo"></i> Restart
@@ -283,8 +320,10 @@
                             <span class="service-name">GreatReads (Dev)</span>
                         </div>
                         <div class="service-description">Book Tracking - Development</div>
-                        <div class="service-url">:8008</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8008</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('greatreads-dev')">
                             <i class="fas fa-redo"></i> Restart
@@ -296,19 +335,21 @@
                 </div>
 
                 <div class="service-card">
-                    <a href="http://100.123.154.40:5000" class="service-link" target="_blank">
+                    <a href="http://100.123.154.40:8083" class="service-link" target="_blank">
                         <div class="service-header">
-                            <i class="service-icon fas fa-book-reader"></i>
-                            <span class="service-name">Kavita</span>
+                            <i class="service-icon fas fa-book"></i>
+                            <span class="service-name">Calibre Web</span>
                         </div>
-                        <div class="service-description">Comics & Manga Reader</div>
-                        <div class="service-url">:5000</div>
+                        <div class="service-description">eBook Library Manager</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8083</div>
+                    </div>
                     <div class="service-actions">
-                        <button class="action-btn restart-btn" onclick="restartContainer('kavita')">
+                        <button class="action-btn restart-btn" onclick="restartContainer('calibre-web')">
                             <i class="fas fa-redo"></i> Restart
                         </button>
-                        <button class="action-btn recreate-btn" onclick="recreateContainer('kavita')">
+                        <button class="action-btn recreate-btn" onclick="recreateContainer('calibre-web')">
                             <i class="fas fa-hammer"></i> Recreate
                         </button>
                     </div>
@@ -321,8 +362,13 @@
                             <span class="service-name">Audiobookshelf</span>
                         </div>
                         <div class="service-description">Audiobook & Podcast Server</div>
-                        <div class="service-url">:13378</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:13378</div>
+                        <button class="action-btn scan-btn" onclick="scanAudiobookshelf()">
+                            <i class="fas fa-sync"></i> Scan
+                        </button>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('audiobookshelf')">
                             <i class="fas fa-redo"></i> Restart
@@ -346,8 +392,10 @@
                             <span class="service-name">LifeForge</span>
                         </div>
                         <div class="service-description">Journaling & Habit Tracking</div>
-                        <div class="service-url">:8004</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8004</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('lifeforge')">
                             <i class="fas fa-redo"></i> Restart
@@ -365,8 +413,10 @@
                             <span class="service-name">ArtForge</span>
                         </div>
                         <div class="service-description">Art & Drawing Projects</div>
-                        <div class="service-url">:8003</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8003</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('artforge')">
                             <i class="fas fa-redo"></i> Restart
@@ -384,8 +434,10 @@
                             <span class="service-name">WordForge</span>
                         </div>
                         <div class="service-description">Creative Writing</div>
-                        <div class="service-url">:8002</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8002</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('wordforge')">
                             <i class="fas fa-redo"></i> Restart
@@ -403,8 +455,10 @@
                             <span class="service-name">CodeForge</span>
                         </div>
                         <div class="service-description">Web-based IDE with AI</div>
-                        <div class="service-url">:8009</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8009</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('codeforge')">
                             <i class="fas fa-redo"></i> Restart
@@ -428,8 +482,10 @@
                             <span class="service-name">Immich</span>
                         </div>
                         <div class="service-description">Photo & Video Management</div>
-                        <div class="service-url">:2283</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:2283</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('immich')">
                             <i class="fas fa-redo"></i> Restart
@@ -447,32 +503,18 @@
                             <span class="service-name">Jellyfin</span>
                         </div>
                         <div class="service-description">Media Server</div>
-                        <div class="service-url">:8096</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8096</div>
+                        <button class="action-btn scan-btn" onclick="scanJellyfin()">
+                            <i class="fas fa-sync"></i> Scan
+                        </button>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('jellyfin')">
                             <i class="fas fa-redo"></i> Restart
                         </button>
                         <button class="action-btn recreate-btn" onclick="recreateContainer('jellyfin')">
-                            <i class="fas fa-hammer"></i> Recreate
-                        </button>
-                    </div>
-                </div>
-
-                <div class="service-card">
-                    <a href="http://100.123.154.40:4533" class="service-link" target="_blank">
-                        <div class="service-header">
-                            <i class="service-icon fas fa-music"></i>
-                            <span class="service-name">Navidrome</span>
-                        </div>
-                        <div class="service-description">Music Streaming Server</div>
-                        <div class="service-url">:4533</div>
-                    </a>
-                    <div class="service-actions">
-                        <button class="action-btn restart-btn" onclick="restartContainer('navidrome')">
-                            <i class="fas fa-redo"></i> Restart
-                        </button>
-                        <button class="action-btn recreate-btn" onclick="recreateContainer('navidrome')">
                             <i class="fas fa-hammer"></i> Recreate
                         </button>
                     </div>
@@ -485,8 +527,10 @@
                             <span class="service-name">Romm</span>
                         </div>
                         <div class="service-description">ROM Management</div>
-                        <div class="service-url">:8080</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8080</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('romm')">
                             <i class="fas fa-redo"></i> Restart
@@ -511,8 +555,10 @@
                             <span class="service-name">qBittorrent</span>
                         </div>
                         <div class="service-description">Torrent Client (VPN Protected)</div>
-                        <div class="service-url">:2285</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:2285</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('qbittorrent')">
                             <i class="fas fa-redo"></i> Restart
@@ -530,8 +576,10 @@
                             <span class="service-name">Jackett</span>
                         </div>
                         <div class="service-description">Torrent Indexer (VPN Protected)</div>
-                        <div class="service-url">:9117</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:9117</div>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('jackett')">
                             <i class="fas fa-redo"></i> Restart
@@ -549,8 +597,13 @@
                             <span class="service-name">YT-DLP Web</span>
                         </div>
                         <div class="service-description">YouTube Downloader</div>
-                        <div class="service-url">:8998</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:8998</div>
+                        <button class="action-btn download-btn" onclick="downloadYouTube()">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                    </div>
                     <div class="service-actions">
                         <button class="action-btn restart-btn" onclick="restartContainer('ytdlp')">
                             <i class="fas fa-redo"></i> Restart
@@ -561,24 +614,34 @@
                     </div>
                 </div>
 
+            </div>
+        </div>
+
+        <!-- Tools -->
+        <div class="category">
+            <h2 class="category-title"><i class="fas fa-tools"></i> Tools</h2>
+            <div class="services">
                 <div class="service-card">
-                    <a href="http://100.123.154.40:8337" class="service-link" target="_blank">
+                    <a href="http://100.123.154.40:3000" class="service-link" target="_blank">
                         <div class="service-header">
-                            <i class="service-icon fas fa-compact-disc"></i>
-                            <span class="service-name">Beets</span>
+                            <i class="service-icon fas fa-book-open"></i>
+                            <span class="service-name">Outline</span>
                         </div>
-                        <div class="service-description">Music Library Manager</div>
-                        <div class="service-url">:8337</div>
+                        <div class="service-description">Knowledge Base & Wiki</div>
                     </a>
+                    <div class="service-footer">
+                        <div class="service-url">:3000</div>
+                    </div>
                     <div class="service-actions">
-                        <button class="action-btn restart-btn" onclick="restartContainer('beets')">
+                        <button class="action-btn restart-btn" onclick="restartContainer('outline')">
                             <i class="fas fa-redo"></i> Restart
                         </button>
-                        <button class="action-btn recreate-btn" onclick="recreateContainer('beets')">
+                        <button class="action-btn recreate-btn" onclick="recreateContainer('outline')">
                             <i class="fas fa-hammer"></i> Recreate
                         </button>
                     </div>
                 </div>
+
             </div>
         </div>
     </div>
@@ -636,6 +699,89 @@
                     showToast(data.message || 'Container recreated successfully', 'success');
                 } else {
                     showToast(data.error || 'Failed to recreate container', 'error');
+                }
+            } catch (error) {
+                showToast('Network error: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+            }
+        }
+
+        async function scanJellyfin() {
+            const btn = event.target.closest('.scan-btn');
+            btn.disabled = true;
+            btn.classList.add('loading');
+
+            try {
+                const response = await fetch(`${API_URL}/scan/jellyfin`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast(data.message || 'Jellyfin library scan started', 'success');
+                } else {
+                    showToast(data.error || 'Failed to start Jellyfin scan', 'error');
+                }
+            } catch (error) {
+                showToast('Network error: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+            }
+        }
+
+        async function scanAudiobookshelf() {
+            const btn = event.target.closest('.scan-btn');
+            btn.disabled = true;
+            btn.classList.add('loading');
+
+            try {
+                const response = await fetch(`${API_URL}/scan/audiobookshelf`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast(data.message || 'Audiobookshelf library scan started', 'success');
+                } else {
+                    showToast(data.error || 'Failed to start Audiobookshelf scan', 'error');
+                }
+            } catch (error) {
+                showToast('Network error: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+            }
+        }
+
+        async function downloadYouTube() {
+            // Prompt user for YouTube URL
+            const url = prompt('Enter YouTube URL:');
+
+            if (!url || url.trim() === '') {
+                return; // User cancelled or entered empty string
+            }
+
+            const btn = event.target.closest('.download-btn');
+            btn.disabled = true;
+            btn.classList.add('loading');
+
+            try {
+                const response = await fetch(`${API_URL}/download/youtube`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url: url.trim() })
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast(data.message || 'YouTube download started', 'success');
+                } else {
+                    showToast(data.error || 'Failed to start download', 'error');
                 }
             } catch (error) {
                 showToast('Network error: ' + error.message, 'error');

@@ -1,0 +1,39 @@
+name: calibre-web
+
+services:
+  calibre-web:
+    container_name: calibre-web
+    image: lscr.io/linuxserver/calibre-web:latest
+    restart: "no"
+    ports:
+      - "8083:8083"
+
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - DOCKER_MODS=linuxserver/mods:universal-calibre  # Adds Calibre tools for metadata editing
+
+    volumes:
+      # Config directory (calibre-web settings, database)
+      - /home/brandon/calibre-web/config:/config
+
+      # Books library - This is where your actual book files are
+      - /mnt/boston/media/books:/books
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1.5G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+

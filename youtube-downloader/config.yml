@@ -1,0 +1,16 @@
+# yt-dlp-webui configuration file
+# This file will be mounted into the container at /config/config.yml
+
+---
+# Port where server will listen at (default: 3033)
+port: 3033
+
+# Directory where downloaded files will be stored
+downloadPath: /downloads
+
+# Enable RPC authentication
+require_auth: true
+
+# Queue size (concurrent downloads)
+queue_size: 2
+

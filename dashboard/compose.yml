@@ -15,6 +15,9 @@ services:
     environment:
       - TZ=America/New_York
       - FLASK_ENV=production
+      # API keys for library scanning - configure these to enable scan buttons
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
+      - AUDIOBOOKSHELF_API_TOKEN=${AUDIOBOOKSHELF_API_TOKEN:-}
 
     # Resource limits
     deploy:

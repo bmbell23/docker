@@ -1,0 +1,42 @@
+name: picard
+
+services:
+  picard:
+    container_name: picard
+    image: mikenye/picard:latest
+    restart: unless-stopped
+    
+    ports:
+      - "5800:5800"  # Web interface (noVNC)
+    
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - DISPLAY_WIDTH=1280
+      - DISPLAY_HEIGHT=768
+      - VNC_PASSWORD=picard  # Change this to a secure password
+    
+    volumes:
+      # Config directory (Picard settings, cache)
+      - ${CONFIG_LOCATION}:/config
+      
+      # Music library (read-write so Picard can edit tags)
+      - ${MUSIC_LOCATION}:/music
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+

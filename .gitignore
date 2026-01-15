@@ -20,6 +20,7 @@ jellyfin/config/
 jellyfin/cache/
 kavita/data/
 navidrome/data/
+outline/data/
 stash/data/
 stash/generated/
 stash/metadata/

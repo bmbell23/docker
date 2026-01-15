@@ -22,9 +22,9 @@ services:
       
       # Media libraries
       - /mnt/boston/media/videos:/media/videos:ro
-      
+      - /mnt/boston/media/music:/media/music
+
       # Optional: Add more media libraries as needed
-      # - /mnt/boston/media/music:/media/music:ro
       # - /mnt/boston/media/pictures:/media/pictures:ro
     
     # Hardware acceleration (Intel QuickSync)

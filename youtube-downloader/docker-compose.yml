@@ -11,11 +11,17 @@ services:
       # Download settings
       DOWNLOAD_PATH: /downloads
 
+      # Authentication
+      USERNAME: ${YT_DLP_USERNAME}
+      PASSWORD: ${YT_DLP_PASSWORD}
+
     volumes:
       # Downloads go here
       - ${DOWNLOAD_LOCATION}:/downloads
       # Config/database
       - ${DATA_LOCATION}:/app/data
+      # Config file for default settings
+      - ./config.yml:/config/config.yml:ro
 
     logging:
       driver: "json-file"
