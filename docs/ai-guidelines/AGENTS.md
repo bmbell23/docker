@@ -29,26 +29,49 @@ These operations have caused catastrophic data loss in the past. **NEVER** perfo
 
 #### Restarting Services
 
-**NOTE: This server has Docker permission issues. `docker restart` and `docker-compose restart` WILL FAIL with "permission denied".**
+**NOTE: This server has Docker permission issues due to AppArmor. `docker restart` and `docker kill` WILL FAIL with "permission denied".**
 
-**WORKING METHOD:**
+**ROOT CAUSE:** AppArmor security policy blocks direct container restart/kill operations, even for users in the docker group.
+
+**WORKING METHOD (ALWAYS USE THIS):**
 ```bash
 # Step 1: Find the container PID
-PID=$(docker inspect <container_name> --format '{{.State.Pid}}')
+PID=$(docker inspect <container_name_or_id> --format '{{.State.Pid}}')
 
-# Step 2: Kill the process
-kill $PID
+# Step 2: Kill the process with sudo
+sudo kill $PID
 
 # Step 3: Bring it back up
 cd /path/to/project
-docker-compose up -d
+docker compose up -d
+
+# Example for Jellyfin:
+PID=$(docker inspect e78b8f4c9b18 --format '{{.State.Pid}}')
+sudo kill $PID
+cd /home/brandon/projects/docker/jellyfin
+docker compose up -d
 
 # Example for GreatReads:
-PID=$(docker inspect da7d9e211ea5_greatreads_app --format '{{.State.Pid}}')
-kill $PID
+PID=$(docker inspect greatreads_app --format '{{.State.Pid}}')
+sudo kill $PID
 cd /home/brandon/projects/GreatReads
-docker-compose up -d
+docker compose up -d
 ```
+
+**WHY THIS WORKS:**
+- `docker restart` and `docker kill` are blocked by AppArmor
+- Killing the PID directly bypasses AppArmor restrictions
+- `docker compose up -d` works because it's creating/starting, not restarting
+
+**NEVER USE:**
+- `docker restart <container>` ❌
+- `docker kill <container>` ❌
+- `docker stop <container>` ❌
+- `docker compose restart` ❌
+
+**ALWAYS USE:**
+- `PID=$(docker inspect <container> --format '{{.State.Pid}}') && sudo kill $PID` ✅
+- Then `docker compose up -d` ✅
 
 **METHODS THAT DON'T WORK ON THIS SERVER:**
 ```bash

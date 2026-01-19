@@ -23,7 +23,9 @@
 
 ### ALWAYS DO THIS INSTEAD
 
-**NOTE: This server has Docker permission issues. `docker restart` and `docker-compose restart` WILL FAIL with "permission denied".**
+**NOTE: This server has Docker permission issues due to AppArmor. `docker restart` and `docker kill` WILL FAIL with "permission denied".**
+
+**ROOT CAUSE:** AppArmor security policy blocks direct container restart/kill operations.
 
 **For Service Issues:**
 ```bash
@@ -32,12 +34,28 @@ docker logs <container>
 df -h
 free -h
 
-# 2. Restart individual service (WORKING METHOD)
-PID=$(docker inspect <container> --format '{{.State.Pid}}')
-kill $PID
+# 2. Restart individual service (WORKING METHOD - ALWAYS USE THIS)
+PID=$(docker inspect <container_name_or_id> --format '{{.State.Pid}}')
+sudo kill $PID
 cd /path/to/project
-docker-compose up -d
+docker compose up -d
+
+# Example:
+PID=$(docker inspect jellyfin --format '{{.State.Pid}}')
+sudo kill $PID
+cd /home/brandon/projects/docker/jellyfin
+docker compose up -d
 ```
+
+**NEVER USE:**
+- `docker restart <container>` ❌
+- `docker kill <container>` ❌
+- `docker stop <container>` ❌
+- `docker compose restart` ❌
+
+**ALWAYS USE:**
+- `PID=$(docker inspect <container> --format '{{.State.Pid}}') && sudo kill $PID` ✅
+- Then `docker compose up -d` ✅
 
 **For Database Issues:**
 ```bash

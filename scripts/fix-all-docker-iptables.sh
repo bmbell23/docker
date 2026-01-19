@@ -73,17 +73,17 @@ add_network_rules "br-9deb05da66a0"
 add_nat_rule "br-9deb05da66a0" 8998 "172.29.0.2" 3033
 add_filter_rule "br-9deb05da66a0" 3033
 
-# Jellyfin (8096 -> 192.168.16.2)
+# Jellyfin (8096 -> 172.23.0.2)
 echo "→ Jellyfin (port 8096)"
-add_network_rules "br-bab1eaec371f"
-add_nat_rule "br-bab1eaec371f" 8096 "192.168.16.2" 8096
-add_filter_rule "br-bab1eaec371f" 8096
-add_nat_rule "br-bab1eaec371f" 8920 "192.168.16.2" 8920
-add_filter_rule "br-bab1eaec371f" 8920
-add_nat_rule "br-bab1eaec371f" 1900 "192.168.16.2" 1900 udp
-add_filter_rule "br-bab1eaec371f" 1900 udp
-add_nat_rule "br-bab1eaec371f" 7359 "192.168.16.2" 7359 udp
-add_filter_rule "br-bab1eaec371f" 7359 udp
+add_network_rules "br-4d578cc17712"
+add_nat_rule "br-4d578cc17712" 8096 "172.23.0.2" 8096
+add_filter_rule "br-4d578cc17712" 8096
+add_nat_rule "br-4d578cc17712" 8920 "172.23.0.2" 8920
+add_filter_rule "br-4d578cc17712" 8920
+add_nat_rule "br-4d578cc17712" 1900 "172.23.0.2" 1900 udp
+add_filter_rule "br-4d578cc17712" 1900 udp
+add_nat_rule "br-4d578cc17712" 7359 "172.23.0.2" 7359 udp
+add_filter_rule "br-4d578cc17712" 7359 udp
 
 # Picard (5800 -> 192.168.32.2)
 echo "→ Picard (port 5800)"
