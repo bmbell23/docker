@@ -14,8 +14,13 @@ services:
       - DB_USER=romm-user
       - DB_PASSWD=romm-password
       - ROMM_AUTH_SECRET_KEY=change-this-to-a-random-secret-key-please
+      
+      # IGDB API Credentials (get from https://dev.twitch.tv/console/apps)
       - IGDB_CLIENT_ID=${IGDB_CLIENT_ID}
       - IGDB_CLIENT_SECRET=${IGDB_CLIENT_SECRET}
+      
+      # Hasheous integration (optional but recommended)
+      - HASHEOUS_URL=http://hasheous:3000
 
     volumes:
       # Game library - RomM will scan this directory
@@ -29,6 +34,7 @@ services:
 
     depends_on:
       - romm-db
+      - hasheous
 
     logging:
       driver: "json-file"
@@ -76,6 +82,43 @@ services:
           cpus: '0.25'
           memory: 128M
 
+  # Hasheous - ROM identification via hash matching
+  hasheous:
+    container_name: hasheous
+    image: hasheous/hasheous:latest
+    restart: unless-stopped
+    ports:
+      - "3001:3000"  # Web UI on port 3001 to avoid conflicts
+
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+
+    volumes:
+      # Config and database
+      - hasheous-config:/config
+      
+      # ROM library (read-only) - same as RomM
+      - ${GAMES_LOCATION}:/roms:ro
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
 volumes:
   romm-db-data:
+  hasheous-config:
 

@@ -1,0 +1,122 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        SERVER REBOOT CHECKLIST                               ║
+║                                                                              ║
+║  Complete ALL items before rebooting to prevent data loss!                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+BEFORE REBOOT:
+═══════════════
+
+[ ] 1. Navigate to docker directory
+      cd /home/brandon/projects/docker
+
+[ ] 2. Run full backup (5-10 minutes)
+      ./pre-reboot-backup.sh
+      
+      ✓ Wait for "Backup Complete!" message
+      ✓ Note the backup location shown
+      ✓ Verify backup size is reasonable (should be several GB)
+
+[ ] 3. Safely shutdown Immich (CRITICAL!)
+      ./immich-safe-shutdown.sh
+      
+      ✓ Wait for "Immich Safely Shut Down" message
+      ✓ Note the backup location shown
+      ✓ Verify all Immich containers stopped
+
+[ ] 4. Optional: Verify backups exist
+      ls -lh /home/brandon/backups/ | tail -5
+      
+      ✓ Should see recent pre-reboot-YYYYMMDD-HHMMSS directory
+      ✓ Should see immich-shutdown-YYYYMMDD-HHMMSS directory
+
+[ ] 5. Ready to reboot!
+      sudo reboot
+
+
+AFTER REBOOT:
+══════════════
+
+[ ] 1. Wait 2-3 minutes for system to boot and services to start
+
+[ ] 2. Navigate to docker directory
+      cd /home/brandon/projects/docker
+
+[ ] 3. Run verification script
+      ./post-reboot-verify.sh
+      
+      ✓ Check for "All services are running!" message
+      ✓ Note any failed services
+      ✓ Note any warnings
+
+[ ] 4. Test Immich web interface
+      Open browser: http://YOUR_SERVER_IP:2283
+      
+      ✓ Can you log in?
+      ✓ Can you see your photos?
+      ✓ Can you browse albums?
+      ✓ Try uploading a test photo
+
+[ ] 5. Test other critical services
+      
+      Jellyfin:       http://YOUR_SERVER_IP:8096
+      Romm:           http://YOUR_SERVER_IP:8080
+      Outline:        http://YOUR_SERVER_IP:8000
+      Audiobookshelf: http://YOUR_SERVER_IP:13378
+
+
+IF SOMETHING FAILS:
+═══════════════════
+
+Immich Database Corrupted:
+  1. Find latest backup:
+     ls -lt /home/brandon/backups/ | head -5
+  
+  2. Restore from backup:
+     cd /home/brandon/backups/pre-reboot-YYYYMMDD-HHMMSS/
+     gunzip immich_postgres_immich.sql.gz
+     docker exec -i immich_postgres psql -U postgres immich < immich_postgres_immich.sql
+
+Service Won't Start:
+  1. Check logs:
+     docker logs <container-name>
+  
+  2. Restart service:
+     cd /home/brandon/projects/docker/<service-directory>
+     docker-compose down
+     docker-compose up -d
+
+Container Not Found:
+  1. Navigate to service directory:
+     cd /home/brandon/projects/docker/<service-directory>
+  
+  2. Start service:
+     docker-compose up -d
+
+
+EMERGENCY CONTACTS:
+═══════════════════
+
+Full Documentation:
+  /home/brandon/projects/docker/REBOOT_GUIDE.md
+
+Quick Reference:
+  /home/brandon/projects/docker/REBOOT_QUICK_REFERENCE.md
+
+Backup Locations:
+  Pre-reboot backups:  /home/brandon/backups/pre-reboot-*/
+  Immich daily:        /home/brandon/backups/immich-daily/
+  Immich shutdown:     /home/brandon/backups/immich-shutdown-*/
+
+
+NOTES:
+══════
+
+✓ All services have restart policies configured
+✓ All data is persisted to host volumes
+✓ Immich has daily automated backups at 2 AM
+✓ Backups are verified for integrity
+✓ Current Immich database size: 238MB
+
+Last updated: 2026-01-18
+

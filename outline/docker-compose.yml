@@ -53,10 +53,9 @@ services:
       retries: 3
 
   outline:
-    image: outlinewiki/outline:latest
+    image: outlinewiki/outline:0.79.0
     container_name: outline
     restart: unless-stopped
-    command: sh -c "yarn db:migrate --env=production-ssl-disabled && yarn start --env=production-ssl-disabled"
     depends_on:
       outline-postgres:
         condition: service_healthy
@@ -65,10 +64,10 @@ services:
       outline-minio:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "8000:3000"
     environment:
       # Base URL - change to your server IP
-      URL: http://100.123.154.40:3000
+      URL: http://100.123.154.40:8000
       PORT: 3000
       
       # Security

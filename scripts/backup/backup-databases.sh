@@ -23,22 +23,28 @@ fi
 
 # RomM MariaDB Backup
 echo "Backing up RomM database..."
-docker exec romm-db mariadb-dump -u romm -promm romm | gzip > "$BACKUP_DIR/romm_${DATE}.sql.gz"
+docker exec romm-db mariadb-dump -u romm-user -promm-password romm | gzip > "$BACKUP_DIR/romm_${DATE}.sql.gz"
 if [ $? -eq 0 ]; then
     echo "✓ RomM backup successful"
 else
     echo "✗ RomM backup failed"
 fi
 
-# Jellyfin SQLite Backup (if needed)
+# Jellyfin SQLite Backup
 echo "Backing up Jellyfin database..."
-docker exec jellyfin cp /config/data/jellyfin.db /config/data/jellyfin_backup.db
-docker cp jellyfin:/config/data/jellyfin_backup.db "$BACKUP_DIR/jellyfin_${DATE}.db"
-if [ $? -eq 0 ]; then
-    echo "✓ Jellyfin backup successful"
-    docker exec jellyfin rm /config/data/jellyfin_backup.db
+# Find the actual Jellyfin container name (it changes with docker-compose)
+JELLYFIN_CONTAINER=$(docker ps --filter "ancestor=jellyfin/jellyfin:latest" --format "{{.Names}}" | head -1)
+if [ -z "$JELLYFIN_CONTAINER" ]; then
+    echo "✗ Jellyfin container not found"
 else
-    echo "✗ Jellyfin backup failed"
+    docker exec "$JELLYFIN_CONTAINER" cp /config/data/jellyfin.db /config/data/jellyfin_backup.db
+    docker cp "$JELLYFIN_CONTAINER":/config/data/jellyfin_backup.db "$BACKUP_DIR/jellyfin_${DATE}.db"
+    if [ $? -eq 0 ]; then
+        echo "✓ Jellyfin backup successful"
+        docker exec "$JELLYFIN_CONTAINER" rm /config/data/jellyfin_backup.db
+    else
+        echo "✗ Jellyfin backup failed"
+    fi
 fi
 
 # Clean up old backups (older than RETENTION_DAYS)
