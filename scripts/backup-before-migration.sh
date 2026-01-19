@@ -6,6 +6,10 @@ set -e
 
 BACKUP_DIR="/home/brandon/docker-migration-backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# Create backup directory first
+mkdir -p "$BACKUP_DIR"
+
 LOG_FILE="$BACKUP_DIR/backup_${TIMESTAMP}.log"
 
 echo "========================================" | tee -a "$LOG_FILE"
@@ -13,8 +17,6 @@ echo "Docker Migration Backup Script" | tee -a "$LOG_FILE"
 echo "Started: $(date)" | tee -a "$LOG_FILE"
 echo "========================================" | tee -a "$LOG_FILE"
 
-# Create backup directory
-mkdir -p "$BACKUP_DIR"
 mkdir -p "$BACKUP_DIR/compose-files"
 mkdir -p "$BACKUP_DIR/volumes"
 mkdir -p "$BACKUP_DIR/configs"
