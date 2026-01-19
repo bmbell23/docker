@@ -133,6 +133,70 @@ All data is stored in the `./data` directory:
 - `./data/minio` - Uploaded files and images
 - `./data/outline` - Application data
 
+## 📥 Importing Markdown Files
+
+To import your existing `.md` files into Outline:
+
+### Method 1: Web Interface (Simple)
+1. Log into Outline at http://100.123.154.40:8000
+2. Go to Settings → Import/Export
+3. Click "Import" and select your markdown files
+
+### Method 2: Bulk Import Script (Advanced)
+For importing many files at once:
+
+```bash
+# 1. Generate an API token in Outline (Settings → API Tokens)
+# 2. Edit scripts/import-markdown.sh and set your API_TOKEN
+# 3. Place your .md files in /mnt/boston/media/notes/
+# 4. Run the import script
+./scripts/import-markdown.sh
+```
+
+The script will:
+- Create a collection called "Imported Notes"
+- Import all `.md` files from the specified directory
+- Preserve filenames as document titles
+
+## 💾 Backup & Restore
+
+### Creating Backups
+
+Use the automated backup script:
+
+```bash
+# 1. (Optional) Set API_TOKEN in scripts/backup-outline.sh for markdown exports
+# 2. Run the backup
+./scripts/backup-outline.sh
+```
+
+This creates a timestamped backup in `/mnt/boston/media/backups/outline/` containing:
+- **database.sql.gz**: Complete PostgreSQL database dump
+- **minio-storage.tar.gz**: All uploaded files and images
+- **docker-compose.yml**: Configuration backup
+- **markdown-export/**: All documents as `.md` files (if API token is set)
+
+### Restoring from Backup
+
+```bash
+# Restore from a specific backup
+./scripts/restore-outline.sh /mnt/boston/media/backups/outline/20260119_143000
+```
+
+**Warning**: This will replace all current data!
+
+### Automated Backups (Recommended)
+
+Set up a daily backup cron job:
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add this line for daily backups at 2 AM
+0 2 * * * cd /home/brandon/projects/docker/outline && ./scripts/backup-outline.sh >> /var/log/outline-backup.log 2>&1
+```
+
 ## 🔧 Maintenance
 
 ### View Logs
@@ -143,15 +207,6 @@ docker compose logs -f outline
 ### Restart Services
 ```bash
 docker compose restart
-```
-
-### Backup Data
-```bash
-# Backup database
-docker compose exec outline-postgres pg_dump -U outline outline > backup_$(date +%Y%m%d).sql
-
-# Backup MinIO data
-tar -czf minio_backup_$(date +%Y%m%d).tar.gz ./data/minio
 ```
 
 ### Update Outline

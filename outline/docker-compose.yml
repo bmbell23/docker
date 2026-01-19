@@ -53,7 +53,7 @@ services:
       retries: 3
 
   outline:
-    image: outlinewiki/outline:0.79.0
+    image: outlinewiki/outline:latest
     container_name: outline
     restart: unless-stopped
     depends_on:
@@ -69,19 +69,19 @@ services:
       # Base URL - change to your server IP
       URL: http://100.123.154.40:8000
       PORT: 3000
-      
+
       # Security
-      SECRET_KEY: generate_a_random_secret_key_here_min_32_chars
-      UTILS_SECRET: generate_another_random_secret_key_here_min_32_chars
-      
+      SECRET_KEY: c43b11daa689ec5ea749888cd3d3fe6fdbb35390aac5b2c6d34bd232ec76adac
+      UTILS_SECRET: bc2e10a2d56b07d7d96fe92e54b6c606f6c2651c62d9ad39f341d6bfab1d3f24
+
       # Database
       DATABASE_URL: postgres://outline:outline_password_change_me@outline-postgres:5432/outline
       DATABASE_URL_TEST: postgres://outline:outline_password_change_me@outline-postgres:5432/outline_test
       PGSSLMODE: disable
-      
+
       # Redis
       REDIS_URL: redis://outline-redis:6379
-      
+
       # MinIO S3 Storage
       AWS_ACCESS_KEY_ID: minio_admin
       AWS_SECRET_ACCESS_KEY: minio_password_change_me
@@ -91,45 +91,46 @@ services:
       AWS_S3_UPLOAD_MAX_SIZE: 26214400
       AWS_S3_FORCE_PATH_STYLE: "true"
       AWS_S3_ACL: private
-      
+
       # File storage (local alternative - disabled in favor of MinIO)
       # FILE_STORAGE: local
       # FILE_STORAGE_LOCAL_ROOT_DIR: /var/lib/outline/data
-      
+
       # Disable SSL for local network
       FORCE_HTTPS: "false"
       ENABLE_UPDATES: "true"
-      
+
       # Authentication - Local (email/password)
       # For production, consider setting up OIDC with Keycloak or another provider
       # For now, we'll use email auth which requires SMTP
-      
-      # SMTP (optional - for email auth and notifications)
-      # Uncomment and configure if you want email-based authentication
-      # SMTP_HOST: smtp.gmail.com
-      # SMTP_PORT: 587
-      # SMTP_USERNAME: your-email@gmail.com
-      # SMTP_PASSWORD: your-app-password
-      # SMTP_FROM_EMAIL: your-email@gmail.com
-      # SMTP_SECURE: "false"
-      
+
+      # SMTP (for email auth and notifications)
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USERNAME: bbell.primary@gmail.com
+      SMTP_PASSWORD: torr jeot rgak qhbv
+      SMTP_FROM_EMAIL: bbell.primary@gmail.com
+      SMTP_REPLY_EMAIL: bbell.primary@gmail.com
+      SMTP_TLS_CIPHERS: ""
+      SMTP_SECURE: "false"
+
       # Slack authentication (alternative - requires Slack app setup)
       # SLACK_CLIENT_ID: your-slack-client-id
       # SLACK_CLIENT_SECRET: your-slack-client-secret
-      
+
       # Google authentication (alternative - requires Google OAuth setup)
       # GOOGLE_CLIENT_ID: your-google-client-id
       # GOOGLE_CLIENT_SECRET: your-google-client-secret
-      
+
       # For initial setup without external auth, you can use the admin user
       # This will be created on first run
       DEFAULT_LANGUAGE: en_US
-      
+
       # Rate limiting
       RATE_LIMITER_ENABLED: "true"
       RATE_LIMITER_REQUESTS: 1000
       RATE_LIMITER_DURATION_WINDOW: 60
-      
+
     volumes:
       - ./data/outline:/var/lib/outline/data
     networks:

@@ -6,7 +6,7 @@ Get Outline up and running in 5 minutes!
 
 ```bash
 cd ~/projects/docker/outline
-./setup.sh
+./scripts/setup.sh
 ```
 
 The script will:
