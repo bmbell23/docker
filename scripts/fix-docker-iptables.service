@@ -1,0 +1,13 @@
+[Unit]
+Description=Fix Docker iptables rules for inter-container communication
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/brandon/projects/docker/scripts/fix-docker-iptables.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+
