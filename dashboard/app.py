@@ -105,19 +105,7 @@ THRESHOLDS = {
     'nas_disk':    {'warn': 85, 'crit': 93},
 }
 
-REPO_TARGETS = [
-    {'name': 'ArtForge',   'path': '/home/brandon/projects/ArtForge'},
-    {'name': 'CodeForge',  'path': '/home/brandon/projects/CodeForge'},
-    {'name': 'docker',     'path': '/home/brandon/projects/docker'},
-    {'name': 'dotfiles',   'path': '/home/brandon/projects/dotfiles'},
-    {'name': 'GreatReads', 'path': '/home/brandon/projects/GreatReads'},
-    {'name': 'Homepage',   'path': '/home/brandon/projects/Homepage'},
-    {'name': 'KidMedia',   'path': '/home/brandon/projects/KidMedia'},
-    {'name': 'Libby',      'path': '/home/brandon/projects/Libby'},
-    {'name': 'LifeForge',  'path': '/home/brandon/projects/LifeForge'},
-    {'name': 'NerdNews',   'path': '/home/brandon/projects/NerdNews'},
-    {'name': 'WordForge',  'path': '/home/brandon/projects/WordForge'},
-]
+PROJECTS_ROOT = '/home/brandon/projects'
 
 AUTOMATION_CONTAINERS = [
     'dashboard', 'libby-web', 'mullvad-vpn'
@@ -361,7 +349,7 @@ def _repo_status(repo: dict) -> dict:
         state = 'merge_conflict'
         summary = f'{conflicts} merge conflict file(s)'
     elif dirty_non_conflict > 0:
-        severity = 'crit'
+        severity = 'warn'
         state = 'dirty'
         summary = f'{dirty_non_conflict} uncommitted change(s)'
     elif behind > 0 and ahead > 0:
@@ -400,8 +388,25 @@ def _repo_status(repo: dict) -> dict:
     }
 
 
+def _discover_repo_targets() -> list[dict]:
+    repos: list[dict] = []
+    try:
+        if not os.path.isdir(PROJECTS_ROOT):
+            return repos
+        for entry in os.scandir(PROJECTS_ROOT):
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            if os.path.isdir(os.path.join(entry.path, '.git')):
+                repos.append({'name': entry.name, 'path': entry.path})
+    except Exception:
+        return repos
+    repos.sort(key=lambda r: r['name'].lower())
+    return repos
+
+
 def _read_git_repos() -> dict:
-    repos = [_repo_status(r) for r in REPO_TARGETS]
+    targets = _discover_repo_targets()
+    repos = [_repo_status(r) for r in targets]
     worst = 'ok'
     if any(r['severity'] == 'crit' for r in repos):
         worst = 'crit'
@@ -425,7 +430,18 @@ def _parse_cron_line(line: str) -> tuple[str, str] | None:
     return schedule, command
 
 
-def _find_last_cron_run(command: str) -> str | None:
+def _extract_log_time(log_line: str) -> str | None:
+    # Supports ISO-leading log lines and syslog-style month/day lines.
+    m = re.match(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2}|Z)?)', log_line)
+    if m:
+        return m.group(1)
+    m = re.match(r'^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})', log_line)
+    if m:
+        return m.group(1)
+    return None
+
+
+def _find_last_cron_run(command: str) -> dict | None:
     """Best-effort lookup in syslog/cron logs for the command basename."""
     cmd_token = command.strip().split()[0] if command.strip() else ''
     base = os.path.basename(cmd_token)
@@ -444,12 +460,22 @@ def _find_last_cron_run(command: str) -> str | None:
             f"tail -n 8000 {log_path} | grep -i 'CRON' | grep -F '{base}' | tail -n 1"
         ], timeout=8)
         if code == 0 and out:
-            return out
+            return {
+                'line': out,
+                'time': _extract_log_time(out),
+                'log_path': log_path,
+            }
     return None
 
 
 def _cron_description(command: str) -> str:
     c = command.lower()
+    if '>> /home/brandon/projects/docker/backup.log 2>&1' in c:
+        return 'Docker Log Backups'
+    if '>> /home/brandon/backups/immich-daily/cron.log 2>&1' in c:
+        return 'Immich Log Backups'
+    if '/home/brandon/projects/docker/immich/watchdog.sh' in c:
+        return 'Immich Watchdog'
     if 'backup-script.sh' in c:
         return 'Hourly backup to internal backup storage (documents/media/dockerhost).'
     if 'backup-external.sh' in c:
@@ -464,7 +490,36 @@ def _cron_description(command: str) -> str:
         return 'Runs all monthly system maintenance jobs.'
     if 'docker' in c and 'compose' in c:
         return 'Docker automation task.'
-    return 'Scheduled automation task.'
+    if '/home/brandon/projects/' in c:
+        try:
+            script = os.path.basename(command.split()[0])
+            return f'Runs script: {script}'
+        except Exception:
+            pass
+    return 'Scheduled task.'
+
+
+def _cron_schedule_human(schedule: str) -> str:
+    parts = schedule.split()
+    if len(parts) != 5:
+        return f'Custom schedule ({schedule})'
+    minute, hour, dom, month, dow = parts
+    if schedule == '* * * * *':
+        return 'Every minute'
+    if minute.startswith('*/') and minute[2:].isdigit() and hour == '*' and dom == '*' and month == '*' and dow == '*':
+        return f'Every {int(minute[2:])} minutes'
+    if hour.startswith('*/') and hour[2:].isdigit() and dom == '*' and month == '*' and dow == '*' and minute.isdigit():
+        return f'Every {int(hour[2:])} hours at minute {int(minute):02d}'
+    if hour == '*' and dom == '*' and month == '*' and dow == '*' and minute.isdigit():
+        return f'Hourly at minute {int(minute):02d}'
+    if dom == '*' and month == '*' and dow == '*' and hour.isdigit() and minute.isdigit():
+        return f'Daily at {int(hour):02d}:{int(minute):02d}'
+    if dom == '*' and month == '*' and dow in {'0', '7', '1', '2', '3', '4', '5', '6'} and hour.isdigit() and minute.isdigit():
+        days = {'0': 'Sunday', '7': 'Sunday', '1': 'Monday', '2': 'Tuesday', '3': 'Wednesday', '4': 'Thursday', '5': 'Friday', '6': 'Saturday'}
+        return f"Weekly on {days[dow]} at {int(hour):02d}:{int(minute):02d}"
+    if dom.isdigit() and month == '*' and dow == '*' and hour.isdigit() and minute.isdigit():
+        return f'Monthly on day {int(dom)} at {int(hour):02d}:{int(minute):02d}'
+    return f'Custom cron ({schedule})'
 
 
 def _cron_next_run(schedule: str) -> str | None:
@@ -475,10 +530,66 @@ def _cron_next_run(schedule: str) -> str | None:
         return None
 
 
+def _is_noisy_noop_cron(command: str) -> bool:
+    c = (command or '').strip().lower()
+    if '/dev/null' not in c:
+        return False
+    if c in ('>/dev/null 2>&1', '> /dev/null 2>&1', '>>/dev/null 2>&1', '>> /dev/null 2>&1'):
+        return True
+    if c.startswith('command -v ') and '> /dev/null &&' in c:
+        return True
+    noisy_prefixes = (
+        'test -x /usr/sbin/anacron',
+        '[ -x /usr/lib/php/sessionclean ]',
+    )
+    if c.startswith(noisy_prefixes):
+        return True
+    if 'run-parts --report /etc/cron.' in c:
+        return True
+    return False
+
+
+def _normalized_cron_entry(source: str, schedule: str, command: str) -> dict | None:
+    if _is_noisy_noop_cron(command):
+        return None
+    cmd_token = command.split()[0] if command else ''
+    script_exists = bool(cmd_token and cmd_token.startswith('/') and os.path.exists(cmd_token))
+    sev = 'ok' if (not cmd_token.startswith('/') or script_exists) else 'crit'
+    last = _find_last_cron_run(command) or {}
+    if last.get('time') is None and sev != 'crit':
+        sev = 'warn'
+    return {
+        'source': source,
+        'schedule': schedule,
+        'schedule_human': _cron_schedule_human(schedule),
+        'command': command,
+        'description': _cron_description(command),
+        'next_run': _cron_next_run(schedule),
+        'script_exists': script_exists if cmd_token.startswith('/') else None,
+        'last_seen': last.get('time'),
+        'last_seen_raw': last.get('line'),
+        'log_path': last.get('log_path'),
+        'severity': sev,
+    }
+
+
+def _parse_proxmox_cron_line(line: str) -> tuple[str, str] | None:
+    s = line.strip()
+    if not s or s.startswith('#'):
+        return None
+    parts = s.split()
+    if len(parts) < 6:
+        return None
+    schedule = ' '.join(parts[:5])
+    command = ' '.join(parts[5:])
+    return schedule, command
+
+
 def _read_automation() -> dict:
     cron_entries: list[dict] = []
     timer_entries: list[dict] = []
     container_jobs: list[dict] = []
+    user_cron_unavailable = None
 
     # user crontab
     code, out, err = _run_cmd(['crontab', '-l'], timeout=10)
@@ -488,30 +599,23 @@ def _read_automation() -> dict:
             if not parsed:
                 continue
             schedule, command = parsed
-            cmd_token = command.split()[0] if command else ''
-            script_exists = bool(cmd_token and cmd_token.startswith('/') and os.path.exists(cmd_token))
-            sev = 'ok' if (not cmd_token.startswith('/') or script_exists) else 'crit'
-            cron_entries.append({
-                'source': 'user_crontab',
-                'schedule': schedule,
-                'command': command,
-                'description': _cron_description(command),
-                'next_run': _cron_next_run(schedule),
-                'script_exists': script_exists if cmd_token.startswith('/') else None,
-                'last_seen': _find_last_cron_run(command),
-                'severity': sev,
-            })
+            entry = _normalized_cron_entry('user_crontab', schedule, command)
+            if entry:
+                cron_entries.append(entry)
     else:
-        cron_entries.append({
+        user_cron_unavailable = {
             'source': 'user_crontab',
             'schedule': None,
+            'schedule_human': None,
             'command': f'unavailable: {err or "no crontab"}',
             'description': 'Could not read user crontab from dashboard runtime.',
             'next_run': None,
             'script_exists': None,
             'last_seen': None,
+            'last_seen_raw': None,
+            'log_path': None,
             'severity': 'warn',
-        })
+        }
 
     # host cron files (if mounted)
     spool_candidates = sorted(glob.glob('/host_var_spool_cron/*')) + sorted(glob.glob('/host_var_spool_cron/crontabs/*'))
@@ -534,21 +638,15 @@ def _read_automation() -> dict:
                         if not parsed:
                             continue
                         schedule, command = parsed
-                    cmd_token = command.split()[0] if command else ''
-                    script_exists = bool(cmd_token and cmd_token.startswith('/') and os.path.exists(cmd_token))
-                    sev = 'ok' if (not cmd_token.startswith('/') or script_exists) else 'crit'
-                    cron_entries.append({
-                        'source': os.path.basename(host_file),
-                        'schedule': schedule,
-                        'command': command,
-                        'description': _cron_description(command),
-                        'next_run': _cron_next_run(schedule),
-                        'script_exists': script_exists if cmd_token.startswith('/') else None,
-                        'last_seen': _find_last_cron_run(command),
-                        'severity': sev,
-                    })
+                    entry = _normalized_cron_entry(os.path.basename(host_file), schedule, command)
+                    if entry:
+                        cron_entries.append(entry)
         except Exception:
             continue
+
+    # Only show the "no user crontab" note if we found no actual cron jobs.
+    if not cron_entries and user_cron_unavailable:
+        cron_entries.append(user_cron_unavailable)
 
     # systemd timers (best effort)
     code, out, _ = _run_cmd(['systemctl', 'list-timers', '--all', '--no-pager', '--no-legend'], timeout=15)
@@ -705,18 +803,25 @@ def _read_network_health() -> dict:
                 'severity': 'ok',
             })
 
-    # mullvad via container status if present
+    # mullvad via container status if present (try exact then fuzzy name match)
     mullvad = {'state': 'unknown', 'health': None, 'severity': 'warn'}
-    code, out, _ = _run_cmd(['docker', 'inspect', '--format', '{{.State.Status}}|{{.State.Health.Status}}', 'mullvad-vpn'], timeout=8)
+    mullvad_name = 'mullvad-vpn'
+    code, out, _ = _run_cmd(['docker', 'inspect', '--format', '{{.State.Status}}|{{.State.Health.Status}}', mullvad_name], timeout=8)
+    if code != 0:
+        c2, out2, _ = _run_cmd(['sh', '-c', "docker ps -a --format '{{.Names}}' | grep -i mullvad | head -n 1"], timeout=8)
+        if c2 == 0 and out2:
+            mullvad_name = out2.strip()
+            code, out, _ = _run_cmd(['docker', 'inspect', '--format', '{{.State.Status}}|{{.State.Health.Status}}', mullvad_name], timeout=8)
     if code == 0:
         state, health = (out.split('|', 1) + [''])[:2]
         mullvad = {
+            'name': mullvad_name,
             'state': state,
             'health': None if health == '<no value>' else health,
             'severity': 'ok' if state == 'running' and health != 'unhealthy' else 'warn',
         }
     else:
-        mullvad = {'state': 'missing', 'health': None, 'severity': 'warn'}
+        mullvad = {'name': mullvad_name, 'state': 'missing', 'health': None, 'severity': 'warn'}
 
     # active interfaces
     interfaces: list[dict] = []
@@ -729,6 +834,9 @@ def _read_network_health() -> dict:
             iface = m.group(1)
             cidr = m.group(2)
             if iface == 'lo':
+                continue
+            # Filter noisy bridge/docker internals; keep primary + VPN interfaces.
+            if iface.startswith('br-') or iface.startswith('docker') or iface.startswith('veth'):
                 continue
             interfaces.append({'name': iface, 'addr': cidr})
 
@@ -896,6 +1004,10 @@ def _read_proxmox_info() -> dict:
     host = os.environ.get('PROXMOX_SSH_HOST', '').strip()
     user = os.environ.get('PROXMOX_SSH_USER', 'root').strip()
     password = os.environ.get('PROXMOX_SSH_PASSWORD', '').strip()
+    # Normalize common dotenv encodings.
+    if password.startswith(('"', "'")) and password.endswith(('"', "'")) and len(password) >= 2:
+        password = password[1:-1]
+    password = password.replace('\\#', '#')
     if not host:
         return {
             'severity': 'warn',
@@ -971,6 +1083,23 @@ def _collect_extended() -> dict:
     host_cfg = _read_host_config()
     proxmox = _read_proxmox_info()
 
+    # Merge Proxmox cron jobs into the main automation list for one unified view.
+    for ln in proxmox.get('cron', [])[:50]:
+        parsed = _parse_proxmox_cron_line(ln)
+        if not parsed:
+            continue
+        schedule, command = parsed
+        entry = _normalized_cron_entry('proxmox_root_crontab', schedule, command)
+        if entry:
+            automation['cron'].append(entry)
+
+    if any(e.get('severity') == 'crit' for e in automation.get('cron', []) + automation.get('timers', [])):
+        automation['severity'] = 'crit'
+    elif any(e.get('severity') == 'warn' for e in automation.get('cron', []) + automation.get('timers', []) + automation.get('automation_containers', [])):
+        automation['severity'] = 'warn'
+    else:
+        automation['severity'] = 'ok'
+
     severities = [repos['severity'], automation['severity'], disks['severity'], network['severity'], docker['severity'], host_cfg['severity'], proxmox['severity']]
     overall = 'ok'
     if 'crit' in severities:
@@ -989,6 +1118,19 @@ def _collect_extended() -> dict:
         'host_config': host_cfg,
         'proxmox': proxmox,
     }
+
+
+def _overall_from_sections(ext: dict) -> str:
+    severities = []
+    for key in ('repos', 'automation', 'disks', 'network', 'docker', 'host_config', 'proxmox'):
+        sev = (ext.get(key) or {}).get('severity') if isinstance(ext.get(key), dict) else None
+        if sev:
+            severities.append(sev)
+    if 'crit' in severities:
+        return 'crit'
+    if 'warn' in severities:
+        return 'warn'
+    return 'ok'
 
 
 def _collect() -> dict:
@@ -1516,6 +1658,14 @@ def infra_extended():
             snap = _collect_extended()
         except Exception as ex:
             return jsonify({'error': str(ex), 'overall': 'unknown'}), 500
+
+    # Always refresh git repo status live so UI reflects commits/changes quickly.
+    try:
+        snap['repos'] = _read_git_repos()
+        snap['ts'] = int(time.time())
+        snap['overall'] = _overall_from_sections(snap)
+    except Exception as ex:
+        logger.warning(f'Live repo refresh failed: {ex}')
     return jsonify(snap)
 
 @app.route('/api/infra/history')

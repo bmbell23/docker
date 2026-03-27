@@ -19,11 +19,20 @@
         body { background: var(--bg); color: var(--white); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
 
         /* ── Nav ── */
-        .nav { display: flex; align-items: center; gap: 1rem; padding: 1.2rem 2rem; border-bottom: 1px solid var(--border); }
+        .nav { position: relative; display: flex; align-items: center; gap: 1rem; padding: 1.2rem 2rem; border-bottom: 1px solid var(--border); }
         .back-btn { color: var(--orange); text-decoration: none; font-size: .9rem; font-weight: 600; display: flex; align-items: center; gap: .4rem; transition: opacity .2s; }
         .back-btn:hover { opacity: .7; }
         .nav-title { font-size: 1.1rem; font-weight: 700; letter-spacing: .5px; }
-        .last-updated { margin-left: auto; font-size: .75rem; color: var(--muted); }
+        .nav-clock { position: absolute; left: 50%; transform: translateX(-50%); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95rem; color: #f3b08b; letter-spacing: .5px; text-shadow: 0 0 14px rgba(255,107,53,.2); }
+        .last-updated { margin-left: auto; font-size: .78rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: .25rem .65rem; transition: all .3s ease; }
+        .last-updated.fresh { color: #ffe6d9; border-color: rgba(255,107,53,.55); box-shadow: 0 0 18px rgba(255,107,53,.28); background: rgba(255,107,53,.12); }
+        .last-updated-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ffb088; margin-right: .42rem; box-shadow: 0 0 8px rgba(255,107,53,.8); vertical-align: middle; }
+
+        @media (max-width: 760px) {
+            .nav { flex-wrap: wrap; row-gap: .55rem; }
+            .nav-clock { position: static; transform: none; width: 100%; text-align: center; order: 3; font-size: .88rem; }
+            .last-updated { margin-left: 0; }
+        }
 
         /* ── Banner ── */
         .banner { margin: 1.5rem 2rem .5rem; padding: 1rem 1.5rem; border-radius: 1rem; border: 1.5px solid; display: flex; align-items: center; gap: .8rem; font-size: 1rem; font-weight: 700; }
@@ -124,7 +133,8 @@
 <nav class="nav">
     <a href="/" class="back-btn"><i class="fas fa-arrow-left"></i> Dashboard</a>
     <span class="nav-title"><i class="fas fa-heartbeat" style="color:var(--orange)"></i> Server Health</span>
-    <span class="last-updated" id="last-updated">—</span>
+    <span class="nav-clock" id="nav-clock">--:--:--</span>
+    <span class="last-updated" id="last-updated"><span class="last-updated-dot"></span>Updated --:--:--</span>
 </nav>
 
 <div id="banner" class="banner unknown">
@@ -180,15 +190,28 @@
 <!-- Automation -->
 <div class="section">
     <div class="section-title">Cron Jobs &amp; Automation</div>
-    <div class="ops-grid">
-        <div class="ops-card">
-            <h4>Cron Jobs</h4>
-            <ul id="cron-list" class="ops-list"></ul>
+    <div class="ops-card" style="margin-bottom:.7rem;">
+        <h4>Cron Jobs</h4>
+        <div class="table-wrap">
+            <table class="ops-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Schedule</th>
+                        <th>Last Run</th>
+                        <th>Next Run</th>
+                        <th>Status</th>
+                        <th>Command</th>
+                        <th>Log Location</th>
+                    </tr>
+                </thead>
+                <tbody id="cron-tbody"></tbody>
+            </table>
         </div>
-        <div class="ops-card">
-            <h4>Systemd Timers</h4>
-            <ul id="timers-list" class="ops-list"></ul>
-        </div>
+    </div>
+    <div class="ops-card">
+        <h4>Systemd Timers</h4>
+        <ul id="timers-list" class="ops-list"></ul>
     </div>
 </div>
 
@@ -235,11 +258,11 @@
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
-const SEV_LABEL = { ok: 'ok', warn: 'warn', crit: 'crit', unknown: 'unknown' };
+const SEV_LABEL = { ok: 'OK', warn: 'WARNING', crit: 'ISSUE', unknown: 'UNKNOWN' };
 const BANNER_TEXT = {
     ok:      { icon: 'fa-check-circle',        msg: 'All systems nominal — everything looks good.' },
-    warn:    { icon: 'fa-exclamation-triangle', msg: 'Degraded — some metrics or containers need attention.' },
-    crit:    { icon: 'fa-times-circle',         msg: 'Critical — immediate attention required.' },
+    warn:    { icon: 'fa-exclamation-triangle', msg: 'Warning — some metrics or services need attention.' },
+    crit:    { icon: 'fa-times-circle',         msg: 'Issue detected — immediate attention recommended.' },
     unknown: { icon: 'fa-circle-notch fa-spin', msg: 'Loading\u2026' },
 };
 
@@ -255,8 +278,9 @@ function fmtMB(mb) {
 }
 
 function sevTag(sev) {
-    const s = SEV_LABEL[sev] || 'unknown';
-    return `<span class="tag ${s}">${s}</span>`;
+    const cls = (sev || 'unknown');
+    const text = SEV_LABEL[cls] || 'UNKNOWN';
+    return `<span class="tag ${cls}">${text}</span>`;
 }
 
 // ── Metrics ───────────────────────────────────────────────────────────────────
@@ -432,34 +456,42 @@ function renderRepos(data) {
         return `<tr>
             <td><div>${r.name}</div><div class="mono">${r.path}</div></td>
             <td>${r.branch || '<span class="soft">n/a</span>'}</td>
-            <td>${sevTag(r.severity)} <span class="soft" style="margin-left:.4rem">${r.state}</span></td>
+            <td>${sevTag(r.severity)} <span class="soft" style="margin-left:.4rem">${(r.state || '').replace(/_/g, ' ').toUpperCase()}</span></td>
             <td class="mono">${sync}</td>
             <td>${r.summary || ''}${r.conflicts ? `<div class="soft">conflicts: ${r.conflicts}</div>` : ''}${r.dirty_files ? `<div class="soft">dirty files: ${r.dirty_files}</div>` : ''}</td>
         </tr>`;
     }).join('');
 }
 
-function renderCron(listElId, entries, emptyMsg) {
-    const el = $(listElId);
+function renderCronTable(entries) {
+    const tbody = $('cron-tbody');
     if (!entries || entries.length === 0) {
-        el.innerHTML = `<li class="empty-note">${emptyMsg}</li>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="soft">No cron entries discovered.</td></tr>`;
         return;
     }
-    el.innerHTML = entries.map(e => {
-        const status = e.script_exists === false ? 'Script missing' : (e.last_seen ? 'Observed in logs' : 'No recent run found');
-        return `<li class="ops-row">
-            <div class="ops-left"><span class="name" title="${(e.command || '').replace(/"/g, '&quot;')}">${e.description || 'Scheduled task'}</span></div>
-            <div>${sevTag(e.severity || 'unknown')}</div>
-        </li>
-        <li class="soft">Schedule: <span class="mono">${e.schedule || 'n/a'}</span>${e.next_run ? ` | Next: ${new Date(e.next_run).toLocaleString()}` : ''}</li>
-        <li class="soft">Health: ${status}</li>
-        <li class="soft mono">${e.command || ''}</li>
-        ${e.last_seen ? `<li class="soft">Last seen: ${e.last_seen}</li>` : ''}`;
+
+    tbody.innerHTML = entries.map(e => {
+        const lastRun = e.last_seen ? new Date(e.last_seen).toLocaleString() : 'No logs found';
+        const nextRun = e.next_run ? new Date(e.next_run).toLocaleString() : 'n/a';
+        const statusText = e.script_exists === false
+            ? 'WARNING: Script missing'
+            : (e.last_seen ? 'OK' : 'WARNING: No logs found');
+        const effectiveSev = (e.last_seen || e.script_exists === false) ? (e.severity || 'unknown') : 'warn';
+        const source = e.source ? `<div class="soft">source: ${e.source}</div>` : '';
+        return `<tr>
+            <td>${e.description || 'Scheduled task'}</td>
+            <td>${e.schedule_human || e.schedule || 'n/a'}</td>
+            <td>${lastRun}</td>
+            <td>${nextRun}</td>
+            <td>${sevTag(effectiveSev)} <span class="soft" style="margin-left:.4rem">${statusText}</span></td>
+            <td class="mono">${e.command || ''}${source}</td>
+            <td class="mono">${e.log_path || 'No log location detected'}</td>
+        </tr>`;
     }).join('');
 }
 
 function renderAutomation(data) {
-    renderCron('cron-list', data.cron || [], 'No cron entries discovered.');
+    renderCronTable(data.cron || []);
 
     const timers = data.timers || [];
     const timersEl = $('timers-list');
@@ -493,7 +525,7 @@ function renderNetwork(data) {
         { name: 'Live RX/TX', val: `${mbps(data.rx_bytes_per_s)} down / ${mbps(data.tx_bytes_per_s)} up`, sev: 'ok' },
         { name: 'Default Route', val: data.default_route || 'n/a', sev: data.default_route ? 'ok' : 'warn' },
         { name: 'Tailscale', val: data.tailscale?.backend_state || (data.tailscale?.available ? 'unknown' : 'not installed'), sev: data.tailscale?.severity || 'warn' },
-        { name: 'Mullvad VPN', val: `${data.mullvad?.state || 'unknown'}${data.mullvad?.health ? ` / ${data.mullvad.health}` : ''}`, sev: data.mullvad?.severity || 'warn' },
+        { name: 'Mullvad VPN', val: `${data.mullvad?.name || 'mullvad-vpn'}: ${data.mullvad?.state || 'unknown'}${data.mullvad?.health ? ` / ${data.mullvad.health}` : ''}`, sev: data.mullvad?.severity || 'warn' },
     ];
     let html = rows.map(r => `<li class="ops-row"><div class="ops-left"><span class="name">${r.name}</span><span class="soft">${r.val}</span></div><div>${sevTag(r.sev)}</div></li>`).join('');
     if (data.interfaces && data.interfaces.length) {
@@ -535,18 +567,23 @@ function renderHostAndProxmox(hostCfg, proxmox) {
         html += proxmox.backups.slice(0, 8).map(b => `<li class="soft mono">${b}</li>`).join('');
     }
     if (proxmox.mounts && proxmox.mounts.length) {
-        html += `<li class="soft">Proxmox /mnt disks:</li>`;
-        html += proxmox.mounts.slice(0, 12).map(m => `<li class="soft mono">${m.target}: ${m.used}/${m.size} (${m.pcent}) free ${m.avail}</li>`).join('');
-    }
-    if (proxmox.cron && proxmox.cron.length) {
-        html += `<li class="soft">Proxmox root cron:</li>`;
-        html += proxmox.cron.slice(0, 10).map(c => `<li class="soft mono">${c}</li>`).join('');
+        html += `<li class="soft">Proxmox mount utilization:</li>`;
+        html += proxmox.mounts.slice(0, 5).map(m => `<li class="soft mono">${m.target}: ${m.pcent} used (${m.used}/${m.size})</li>`).join('');
     }
     el.innerHTML = html;
 }
 
+function startClock() {
+    const el = $('nav-clock');
+    const tick = () => {
+        el.textContent = new Date().toLocaleTimeString();
+    };
+    tick();
+    setInterval(tick, 1000);
+}
+
 function refreshExtended() {
-    fetch('/api/infra/extended')
+    fetch(`/api/infra/extended?_=${Date.now()}`)
         .then(r => r.ok ? r.json() : Promise.reject(r.status))
         .then(ext => {
             renderRepos(ext.repos || {});
@@ -627,16 +664,20 @@ function refresh() {
             renderMetrics(snap);
             renderContainers(snap.containers || []);
             buildPies(snap.container_stats || []);
-            $('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+            const upd = $('last-updated');
+            upd.innerHTML = `<span class="last-updated-dot"></span>Updated ${new Date().toLocaleTimeString()}`;
+            upd.classList.remove('fresh');
+            requestAnimationFrame(() => upd.classList.add('fresh'));
         })
         .catch(() => setBanner('unknown'));
 }
 
+startClock();
 refresh();
 refreshExtended();
 loadHistory(activeHours);
 setInterval(refresh, 15_000);
-setInterval(refreshExtended, 60_000);
+setInterval(refreshExtended, 20_000);
 setInterval(() => loadHistory(activeHours), 60_000);
 </script>
 </body>
