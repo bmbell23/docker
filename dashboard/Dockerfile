@@ -2,9 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install docker-compose
+# Install runtime tools used by health checks
 RUN apt-get update && \
-    apt-get install -y docker-compose && \
+    apt-get install -y docker-compose git iproute2 iputils-ping openssh-client cron procps curl iptables sshpass && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies

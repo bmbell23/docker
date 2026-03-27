@@ -21,16 +21,16 @@
             --glow: 0 0 20px rgba(255, 149, 0, 0.3);
         }
 
-        /* Top-left cluster: health button + status badge */
+        /* Top-left cluster */
         .health-wrapper {
             position: fixed;
             top: 1.5rem;
             left: 1.5rem;
             z-index: 1001;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: flex-start;
-            gap: 0.5rem;
+            gap: 0.4rem;
         }
 
         /* Top-right cluster: bookmarks only */
@@ -79,26 +79,30 @@
             color: var(--white);
         }
 
-        /* Status badge — sits below the nav buttons */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            padding: 0.3rem 0.7rem;
-            border-radius: 999px;
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            border: 1.5px solid transparent;
+        .health-nav-btn.ok {
+            border-color: rgba(52, 199, 89, 0.8);
+            color: #34c759;
+            box-shadow: 0 0 14px rgba(52, 199, 89, 0.25);
         }
-        .status-badge.ok   { background: rgba(52,199,89,0.15);  border-color: #34c759; color: #34c759; }
-        .status-badge.warn { background: rgba(255,159,10,0.15); border-color: #ff9f0a; color: #ff9f0a; }
-        .status-badge.crit { background: rgba(255,69,58,0.15);  border-color: #ff453a; color: #ff453a; animation: badge-pulse 1.5s infinite; }
-        .status-badge.unknown { background: rgba(255,255,255,0.06); border-color: #555; color: #999; }
+
+        .health-nav-btn.warn {
+            border-color: rgba(255, 159, 10, 0.85);
+            color: #ff9f0a;
+            box-shadow: 0 0 14px rgba(255, 159, 10, 0.25);
+        }
+
+        .health-nav-btn.crit {
+            border-color: rgba(255, 69, 58, 0.9);
+            color: #ff453a;
+            box-shadow: 0 0 16px rgba(255, 69, 58, 0.3);
+            animation: badge-pulse 1.5s infinite;
+        }
+
+        .health-nav-btn.unknown {
+            border-color: var(--medium-gray);
+            color: var(--primary-orange);
+        }
+
         @keyframes badge-pulse {
             0%, 100% { box-shadow: none; }
             50%       { box-shadow: 0 0 10px rgba(255,69,58,0.6); }
@@ -532,14 +536,11 @@
     </style>
 </head>
 <body>
-    <!-- Top-left: Server Health button + status badge -->
+    <!-- Top-left: Server Health button -->
     <div class="health-wrapper">
-        <a href="/server-health" class="health-nav-btn" title="Server Health">
+        <a href="/server-health" id="health-nav-btn" class="health-nav-btn unknown" title="Server Health">
             <i class="fas fa-heartbeat"></i>
             <span>Server Health</span>
-        </a>
-        <a href="/server-health" id="status-badge" class="status-badge unknown" title="Server Health">
-            <i class="fas fa-circle-notch fa-spin"></i> Checking&hellip;
         </a>
     </div>
 
@@ -1362,27 +1363,28 @@
             icon.className = li.classList.contains('collapsed') ? 'toggle-icon fas fa-chevron-right' : 'toggle-icon fas fa-chevron-down';
         }
 
-        // ── Status badge ─────────────────────────────────────────────────
-        (function initStatusBadge() {
-            const badge = document.getElementById('status-badge');
+        // ── Health button status color ───────────────────────────────────
+        (function initHealthButtonStatus() {
+            const btn = document.getElementById('health-nav-btn');
             const LABELS = {
-                ok:      { icon: 'fa-check-circle',    text: 'All systems nominal' },
-                warn:    { icon: 'fa-exclamation-triangle', text: 'Degraded'       },
-                crit:    { icon: 'fa-times-circle',    text: 'Critical'            },
-                unknown: { icon: 'fa-circle-notch fa-spin', text: 'Checking\u2026' },
+                ok:      { icon: 'fa-heartbeat', text: 'Server Health: OK' },
+                warn:    { icon: 'fa-triangle-exclamation', text: 'Server Health: Degraded' },
+                crit:    { icon: 'fa-skull-crossbones', text: 'Server Health: Critical' },
+                unknown: { icon: 'fa-circle-notch', text: 'Server Health: Checking' },
             };
 
-            function updateBadge(status) {
+            function updateButton(status) {
                 const s = LABELS[status] || LABELS.unknown;
-                badge.className = `status-badge ${status}`;
-                badge.innerHTML = `<i class="fas ${s.icon}"></i> ${s.text}`;
+                btn.className = `health-nav-btn ${status}`;
+                btn.innerHTML = `<i class="fas ${s.icon}${status === 'unknown' ? ' fa-spin' : ''}"></i><span>Server Health</span>`;
+                btn.title = s.text;
             }
 
             function fetchStatus() {
                 fetch('/api/infra/status')
                     .then(r => r.ok ? r.json() : Promise.reject(r.status))
-                    .then(d => updateBadge(d.overall || 'unknown'))
-                    .catch(() => updateBadge('unknown'));
+                    .then(d => updateButton(d.overall || 'unknown'))
+                    .catch(() => updateButton('unknown'));
             }
 
             fetchStatus();

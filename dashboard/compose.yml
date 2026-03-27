@@ -14,6 +14,13 @@ services:
       # Read-only disk mounts so the health page can report real usage
       - /mnt/docker:/mnt/docker:ro
       - /mnt/boston:/mnt/boston:ro
+      # Host config and automation visibility (read-only)
+      - /etc/fstab:/host_etc/fstab:ro
+      - /etc/crontab:/host_etc/crontab:ro
+      - /etc/cron.d:/host_etc/cron.d:ro
+      - /var/spool/cron:/host_var_spool_cron:ro
+      - /var/log:/host_var_log:ro
+      - /home/brandon/.ssh:/root/.ssh:ro
 
     environment:
       - TZ=America/New_York
@@ -22,6 +29,9 @@ services:
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
       - AUDIOBOOKSHELF_API_TOKEN=${AUDIOBOOKSHELF_API_TOKEN:-}
       - STASH_API_KEY=${STASH_API_KEY:-}
+      - PROXMOX_SSH_HOST=${PROXMOX_SSH_HOST:-10.0.0.159}
+      - PROXMOX_SSH_USER=${PROXMOX_SSH_USER:-root}
+      - PROXMOX_SSH_PASSWORD=${PROXMOX_SSH_PASSWORD:-}
 
     # Resource limits
     deploy:

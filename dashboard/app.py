@@ -14,8 +14,12 @@ import uuid
 import threading
 import sqlite3
 import time
+import shutil
+import glob
+import re
 from datetime import datetime
 import requests
+from croniter import croniter
 
 app = Flask(__name__, static_folder='static')
 CORS(app)  # Enable CORS for frontend requests
@@ -101,8 +105,28 @@ THRESHOLDS = {
     'nas_disk':    {'warn': 85, 'crit': 93},
 }
 
+REPO_TARGETS = [
+    {'name': 'ArtForge',   'path': '/home/brandon/projects/ArtForge'},
+    {'name': 'CodeForge',  'path': '/home/brandon/projects/CodeForge'},
+    {'name': 'docker',     'path': '/home/brandon/projects/docker'},
+    {'name': 'dotfiles',   'path': '/home/brandon/projects/dotfiles'},
+    {'name': 'GreatReads', 'path': '/home/brandon/projects/GreatReads'},
+    {'name': 'Homepage',   'path': '/home/brandon/projects/Homepage'},
+    {'name': 'KidMedia',   'path': '/home/brandon/projects/KidMedia'},
+    {'name': 'Libby',      'path': '/home/brandon/projects/Libby'},
+    {'name': 'LifeForge',  'path': '/home/brandon/projects/LifeForge'},
+    {'name': 'NerdNews',   'path': '/home/brandon/projects/NerdNews'},
+    {'name': 'WordForge',  'path': '/home/brandon/projects/WordForge'},
+]
+
+AUTOMATION_CONTAINERS = [
+    'dashboard', 'libby-web', 'mullvad-vpn'
+]
+
 _latest_status: dict = {}
 _status_lock = threading.Lock()
+_latest_extended: dict = {}
+_extended_lock = threading.Lock()
 
 
 def _init_db():
@@ -238,6 +262,735 @@ def _read_container_stats() -> list:
         return []
 
 
+def _run_cmd(cmd: list, timeout: int = 15, cwd: str | None = None) -> tuple[int, str, str]:
+    """Run a command and return (exit_code, stdout, stderr) without raising."""
+    try:
+        res = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        return res.returncode, (res.stdout or '').strip(), (res.stderr or '').strip()
+    except Exception as ex:
+        return 1, '', str(ex)
+
+
+def _repo_status(repo: dict) -> dict:
+    name = repo['name']
+    path = repo['path']
+
+    def git(args: list[str]) -> tuple[int, str, str]:
+        return _run_cmd(['git', '-c', f'safe.directory={path}', '-C', path] + args)
+
+    if not os.path.isdir(path):
+        return {
+            'name': name,
+            'path': path,
+            'severity': 'crit',
+            'state': 'missing',
+            'branch': None,
+            'dirty_files': 0,
+            'conflicts': 0,
+            'ahead': 0,
+            'behind': 0,
+            'summary': 'Repository path not found',
+        }
+
+    code, out, err = git(['rev-parse', '--is-inside-work-tree'])
+    if code != 0 or out.lower() != 'true':
+        if 'dubious ownership' in (err or '').lower():
+            return {
+                'name': name,
+                'path': path,
+                'severity': 'warn',
+                'state': 'safe_directory_required',
+                'branch': None,
+                'dirty_files': 0,
+                'conflicts': 0,
+                'ahead': 0,
+                'behind': 0,
+                'summary': 'Git safe.directory ownership check blocked this repo',
+            }
+        return {
+            'name': name,
+            'path': path,
+            'severity': 'crit',
+            'state': 'not_git',
+            'branch': None,
+            'dirty_files': 0,
+            'conflicts': 0,
+            'ahead': 0,
+            'behind': 0,
+            'summary': 'Not a git repository',
+        }
+
+    _, branch, _ = git(['branch', '--show-current'])
+    _, porcelain, _ = git(['status', '--porcelain'])
+
+    lines = [ln for ln in porcelain.splitlines() if ln.strip()]
+    conflict_prefixes = {'UU', 'AA', 'DD', 'AU', 'UA', 'DU', 'UD'}
+    conflicts = 0
+    for ln in lines:
+        p = ln[:2].strip()
+        if p in conflict_prefixes:
+            conflicts += 1
+
+    dirty_files = len(lines)
+    dirty_non_conflict = max(dirty_files - conflicts, 0)
+
+    upstream = None
+    ahead = 0
+    behind = 0
+    up_code, up_out, _ = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])
+    if up_code == 0 and up_out:
+        upstream = up_out
+        lr_code, lr_out, _ = git(['rev-list', '--left-right', '--count', '@{upstream}...HEAD'])
+        if lr_code == 0 and lr_out:
+            try:
+                left, right = lr_out.split()
+                behind = int(left)
+                ahead = int(right)
+            except Exception:
+                ahead, behind = 0, 0
+
+    if conflicts > 0:
+        severity = 'crit'
+        state = 'merge_conflict'
+        summary = f'{conflicts} merge conflict file(s)'
+    elif dirty_non_conflict > 0:
+        severity = 'crit'
+        state = 'dirty'
+        summary = f'{dirty_non_conflict} uncommitted change(s)'
+    elif behind > 0 and ahead > 0:
+        severity = 'warn'
+        state = 'diverged'
+        summary = f'Diverged from upstream (+{ahead}/-{behind})'
+    elif behind > 0:
+        severity = 'warn'
+        state = 'behind'
+        summary = f'Behind upstream by {behind} commit(s)'
+    elif ahead > 0:
+        severity = 'warn'
+        state = 'ahead'
+        summary = f'Ahead of upstream by {ahead} commit(s)'
+    elif upstream is None:
+        severity = 'warn'
+        state = 'no_upstream'
+        summary = 'No upstream tracking branch configured'
+    else:
+        severity = 'ok'
+        state = 'clean'
+        summary = 'Clean and up to date with upstream refs'
+
+    return {
+        'name': name,
+        'path': path,
+        'severity': severity,
+        'state': state,
+        'branch': branch or None,
+        'upstream': upstream,
+        'dirty_files': dirty_files,
+        'conflicts': conflicts,
+        'ahead': ahead,
+        'behind': behind,
+        'summary': summary,
+    }
+
+
+def _read_git_repos() -> dict:
+    repos = [_repo_status(r) for r in REPO_TARGETS]
+    worst = 'ok'
+    if any(r['severity'] == 'crit' for r in repos):
+        worst = 'crit'
+    elif any(r['severity'] == 'warn' for r in repos):
+        worst = 'warn'
+    return {
+        'severity': worst,
+        'repos': repos,
+    }
+
+
+def _parse_cron_line(line: str) -> tuple[str, str] | None:
+    s = line.strip()
+    if not s or s.startswith('#'):
+        return None
+    parts = s.split()
+    if len(parts) < 6:
+        return None
+    schedule = ' '.join(parts[:5])
+    command = ' '.join(parts[5:])
+    return schedule, command
+
+
+def _find_last_cron_run(command: str) -> str | None:
+    """Best-effort lookup in syslog/cron logs for the command basename."""
+    cmd_token = command.strip().split()[0] if command.strip() else ''
+    base = os.path.basename(cmd_token)
+    if not base:
+        return None
+
+    log_candidates = [
+        '/host_var_log/syslog', '/host_var_log/cron.log',
+        '/var/log/syslog', '/var/log/cron.log',
+    ]
+    for log_path in log_candidates:
+        if not os.path.exists(log_path):
+            continue
+        code, out, _ = _run_cmd([
+            'sh', '-c',
+            f"tail -n 8000 {log_path} | grep -i 'CRON' | grep -F '{base}' | tail -n 1"
+        ], timeout=8)
+        if code == 0 and out:
+            return out
+    return None
+
+
+def _cron_description(command: str) -> str:
+    c = command.lower()
+    if 'backup-script.sh' in c:
+        return 'Hourly backup to internal backup storage (documents/media/dockerhost).'
+    if 'backup-external.sh' in c:
+        return 'Hourly backup to external drive when connected (pictures/videos).'
+    if 'run-parts --report /etc/cron.hourly' in c:
+        return 'Runs all hourly system maintenance jobs.'
+    if 'run-parts --report /etc/cron.daily' in c:
+        return 'Runs all daily system maintenance jobs.'
+    if 'run-parts --report /etc/cron.weekly' in c:
+        return 'Runs all weekly system maintenance jobs.'
+    if 'run-parts --report /etc/cron.monthly' in c:
+        return 'Runs all monthly system maintenance jobs.'
+    if 'docker' in c and 'compose' in c:
+        return 'Docker automation task.'
+    return 'Scheduled automation task.'
+
+
+def _cron_next_run(schedule: str) -> str | None:
+    try:
+        nxt = croniter(schedule, datetime.now()).get_next(datetime)
+        return nxt.isoformat(timespec='seconds')
+    except Exception:
+        return None
+
+
+def _read_automation() -> dict:
+    cron_entries: list[dict] = []
+    timer_entries: list[dict] = []
+    container_jobs: list[dict] = []
+
+    # user crontab
+    code, out, err = _run_cmd(['crontab', '-l'], timeout=10)
+    if code == 0:
+        for ln in out.splitlines():
+            parsed = _parse_cron_line(ln)
+            if not parsed:
+                continue
+            schedule, command = parsed
+            cmd_token = command.split()[0] if command else ''
+            script_exists = bool(cmd_token and cmd_token.startswith('/') and os.path.exists(cmd_token))
+            sev = 'ok' if (not cmd_token.startswith('/') or script_exists) else 'crit'
+            cron_entries.append({
+                'source': 'user_crontab',
+                'schedule': schedule,
+                'command': command,
+                'description': _cron_description(command),
+                'next_run': _cron_next_run(schedule),
+                'script_exists': script_exists if cmd_token.startswith('/') else None,
+                'last_seen': _find_last_cron_run(command),
+                'severity': sev,
+            })
+    else:
+        cron_entries.append({
+            'source': 'user_crontab',
+            'schedule': None,
+            'command': f'unavailable: {err or "no crontab"}',
+            'description': 'Could not read user crontab from dashboard runtime.',
+            'next_run': None,
+            'script_exists': None,
+            'last_seen': None,
+            'severity': 'warn',
+        })
+
+    # host cron files (if mounted)
+    spool_candidates = sorted(glob.glob('/host_var_spool_cron/*')) + sorted(glob.glob('/host_var_spool_cron/crontabs/*'))
+    for host_file in ['/host_etc/crontab'] + sorted(glob.glob('/host_etc/cron.d/*')) + spool_candidates:
+        if not os.path.isfile(host_file):
+            continue
+        try:
+            with open(host_file) as f:
+                for ln in f:
+                    s = ln.strip()
+                    if not s or s.startswith('#'):
+                        continue
+                    parts = s.split()
+                    # /etc/crontab format includes user column
+                    if len(parts) >= 7:
+                        schedule = ' '.join(parts[:5])
+                        command = ' '.join(parts[6:])
+                    else:
+                        parsed = _parse_cron_line(s)
+                        if not parsed:
+                            continue
+                        schedule, command = parsed
+                    cmd_token = command.split()[0] if command else ''
+                    script_exists = bool(cmd_token and cmd_token.startswith('/') and os.path.exists(cmd_token))
+                    sev = 'ok' if (not cmd_token.startswith('/') or script_exists) else 'crit'
+                    cron_entries.append({
+                        'source': os.path.basename(host_file),
+                        'schedule': schedule,
+                        'command': command,
+                        'description': _cron_description(command),
+                        'next_run': _cron_next_run(schedule),
+                        'script_exists': script_exists if cmd_token.startswith('/') else None,
+                        'last_seen': _find_last_cron_run(command),
+                        'severity': sev,
+                    })
+        except Exception:
+            continue
+
+    # systemd timers (best effort)
+    code, out, _ = _run_cmd(['systemctl', 'list-timers', '--all', '--no-pager', '--no-legend'], timeout=15)
+    if code == 0:
+        for ln in out.splitlines():
+            ln = re.sub(r'\s+', ' ', ln.strip())
+            if not ln:
+                continue
+            # NEXT LEFT LAST PASSED UNIT ACTIVATES
+            parts = ln.split(' ')
+            if len(parts) < 6:
+                continue
+            unit = parts[-2]
+            activates = parts[-1]
+            timer_entries.append({
+                'unit': unit,
+                'activates': activates,
+                'raw': ln,
+                'severity': 'ok',
+            })
+    else:
+        timer_entries.append({
+            'unit': 'systemd-unavailable',
+            'activates': 'n/a',
+            'raw': 'Systemd timers are not accessible from this container runtime.',
+            'severity': 'warn',
+        })
+
+    # Optional automation-related container statuses
+    for name in AUTOMATION_CONTAINERS:
+        code, out, _ = _run_cmd(['docker', 'inspect', '--format', '{{.State.Status}}|{{.State.Health.Status}}', name], timeout=8)
+        if code != 0:
+            container_jobs.append({'name': name, 'state': 'missing', 'health': None, 'severity': 'warn'})
+            continue
+        state, health = (out.split('|', 1) + [''])[:2]
+        sev = 'ok'
+        if state != 'running':
+            sev = 'crit'
+        elif health and health not in ('healthy', '<no value>'):
+            sev = 'warn'
+        container_jobs.append({'name': name, 'state': state, 'health': (None if health == '<no value>' else health), 'severity': sev})
+
+    overall = 'ok'
+    if any(e.get('severity') == 'crit' for e in cron_entries + timer_entries):
+        overall = 'crit'
+    elif any(e.get('severity') == 'warn' for e in cron_entries + timer_entries + container_jobs):
+        overall = 'warn'
+
+    return {
+        'severity': overall,
+        'cron': cron_entries,
+        'timers': timer_entries,
+        'automation_containers': container_jobs,
+    }
+
+
+def _read_mount_inventory() -> dict:
+    ignored_fs = {
+        'proc', 'sysfs', 'devtmpfs', 'devpts', 'tmpfs', 'overlay', 'squashfs',
+        'cgroup', 'cgroup2', 'mqueue', 'pstore', 'debugfs', 'tracefs', 'securityfs'
+    }
+    mounts: list[dict] = []
+    try:
+        with open('/proc/mounts') as f:
+            for ln in f:
+                parts = ln.split()
+                if len(parts) < 3:
+                    continue
+                device, mnt, fs = parts[:3]
+                if fs in ignored_fs:
+                    continue
+                # Hide container runtime internals that overwhelm the UI.
+                if '/overlay2/' in mnt or '/containers/' in mnt:
+                    continue
+                if not (mnt == '/' or mnt.startswith('/mnt/') or mnt.startswith('/home/')):
+                    continue
+                # Keep mount inventory concise at the top level.
+                if mnt.startswith('/mnt/') and mnt.count('/') > 2:
+                    continue
+                disk = _read_disk(mnt)
+                mounts.append({
+                    'mountpoint': mnt,
+                    'device': device,
+                    'fstype': fs,
+                    'used_gb': disk['used_gb'],
+                    'total_gb': disk['total_gb'],
+                    'pct': disk['pct'],
+                    'severity': 'crit' if disk['pct'] >= 93 else 'warn' if disk['pct'] >= 85 else 'ok',
+                })
+    except Exception:
+        pass
+
+    # dedupe by mountpoint
+    uniq = {}
+    for m in mounts:
+        uniq[m['mountpoint']] = m
+    mounts = sorted(uniq.values(), key=lambda x: x['pct'], reverse=True)
+
+    overall = 'ok'
+    if any(m['severity'] == 'crit' for m in mounts):
+        overall = 'crit'
+    elif any(m['severity'] == 'warn' for m in mounts):
+        overall = 'warn'
+
+    return {'severity': overall, 'mounts': mounts}
+
+
+def _read_network_health() -> dict:
+    # default route
+    code, route_out, _ = _run_cmd(['ip', 'route', 'show', 'default'], timeout=8)
+    default_route = route_out.splitlines()[0] if code == 0 and route_out else None
+
+    # basic connectivity
+    ping_ms = None
+    internet_up = False
+    code, ping_out, _ = _run_cmd(['ping', '-c', '1', '-W', '2', '1.1.1.1'], timeout=5)
+    if code == 0:
+        internet_up = True
+        m = re.search(r'time=([0-9.]+)\s*ms', ping_out)
+        if m:
+            ping_ms = float(m.group(1))
+
+    # dns test
+    dns_ok = False
+    code, _, _ = _run_cmd(['getent', 'hosts', 'github.com'], timeout=6)
+    if code == 0:
+        dns_ok = True
+
+    # tailscale (CLI optional)
+    tailscale = {'available': False, 'backend_state': None, 'self_ip': None, 'severity': 'warn'}
+    if shutil.which('tailscale'):
+        tailscale['available'] = True
+        code, out, _ = _run_cmd(['tailscale', 'status', '--json'], timeout=8)
+        if code == 0 and out:
+            try:
+                d = json.loads(out)
+                backend = d.get('BackendState')
+                tailscale.update({
+                    'backend_state': backend,
+                    'self_ip': (d.get('Self', {}) or {}).get('TailscaleIPs', [None])[0],
+                    'severity': 'ok' if backend == 'Running' else 'warn',
+                })
+            except Exception:
+                tailscale['severity'] = 'warn'
+    else:
+        # Fall back to interface detection in host net namespace.
+        code, out, _ = _run_cmd(['ip', '-o', '-4', 'addr', 'show', 'tailscale0'], timeout=6)
+        if code == 0 and out:
+            m = re.search(r'inet\s+([0-9.]+/[0-9]+)', out)
+            tailscale.update({
+                'available': True,
+                'backend_state': 'Running (interface detected)',
+                'self_ip': m.group(1) if m else None,
+                'severity': 'ok',
+            })
+
+    # mullvad via container status if present
+    mullvad = {'state': 'unknown', 'health': None, 'severity': 'warn'}
+    code, out, _ = _run_cmd(['docker', 'inspect', '--format', '{{.State.Status}}|{{.State.Health.Status}}', 'mullvad-vpn'], timeout=8)
+    if code == 0:
+        state, health = (out.split('|', 1) + [''])[:2]
+        mullvad = {
+            'state': state,
+            'health': None if health == '<no value>' else health,
+            'severity': 'ok' if state == 'running' and health != 'unhealthy' else 'warn',
+        }
+    else:
+        mullvad = {'state': 'missing', 'health': None, 'severity': 'warn'}
+
+    # active interfaces
+    interfaces: list[dict] = []
+    code, out, _ = _run_cmd(['ip', '-o', '-4', 'addr', 'show'], timeout=8)
+    if code == 0 and out:
+        for ln in out.splitlines():
+            m = re.search(r'^\d+:\s+([^\s]+)\s+inet\s+([0-9.]+/[0-9]+)', ln)
+            if not m:
+                continue
+            iface = m.group(1)
+            cidr = m.group(2)
+            if iface == 'lo':
+                continue
+            interfaces.append({'name': iface, 'addr': cidr})
+
+    # lightweight HTTP probe
+    probe = {'ok': False, 'connect_s': None, 'ttfb_s': None, 'download_bytes_per_s': None}
+    code, out, _ = _run_cmd([
+        'curl', '-sS', '-o', '/dev/null',
+        '-w', '%{time_connect}|%{time_starttransfer}|%{speed_download}',
+        '--max-time', '8',
+        'https://speed.cloudflare.com/__down?bytes=2000000'
+    ], timeout=10)
+    if code == 0 and out and '|' in out:
+        try:
+            tc, tt, sp = out.split('|')
+            probe = {
+                'ok': True,
+                'connect_s': float(tc),
+                'ttfb_s': float(tt),
+                'download_bytes_per_s': float(sp),
+            }
+        except Exception:
+            pass
+
+    # real-time throughput sample over 1 second
+    def net_totals() -> tuple[int, int]:
+        rx = 0
+        tx = 0
+        try:
+            with open('/proc/net/dev') as f:
+                for ln in f.readlines()[2:]:
+                    if ':' not in ln:
+                        continue
+                    iface, vals = ln.split(':', 1)
+                    iface = iface.strip()
+                    if iface in ('lo',):
+                        continue
+                    cols = vals.split()
+                    if len(cols) >= 10:
+                        rx += int(cols[0])
+                        tx += int(cols[8])
+        except Exception:
+            pass
+        return rx, tx
+
+    rx1, tx1 = net_totals()
+    time.sleep(1)
+    rx2, tx2 = net_totals()
+    rx_rate = max(rx2 - rx1, 0)
+    tx_rate = max(tx2 - tx1, 0)
+
+    overall = 'ok'
+    if not internet_up or not dns_ok:
+        overall = 'crit'
+    elif (tailscale.get('severity') == 'warn') or (mullvad.get('severity') == 'warn'):
+        overall = 'warn'
+
+    return {
+        'severity': overall,
+        'default_route': default_route,
+        'internet_up': internet_up,
+        'dns_ok': dns_ok,
+        'ping_ms': ping_ms,
+        'interfaces': interfaces,
+        'probe': probe,
+        'rx_bytes_per_s': rx_rate,
+        'tx_bytes_per_s': tx_rate,
+        'tailscale': tailscale,
+        'mullvad': mullvad,
+    }
+
+
+def _read_docker_overview() -> dict:
+    code, ps_out, _ = _run_cmd(['docker', 'ps', '-a', '--format', '{{.Names}}|{{.Status}}'], timeout=10)
+    containers_total = 0
+    containers_running = 0
+    if code == 0 and ps_out:
+        rows = [ln for ln in ps_out.splitlines() if '|' in ln]
+        containers_total = len(rows)
+        containers_running = sum(1 for ln in rows if ln.split('|', 1)[1].lower().startswith('up'))
+
+    code, img_out, _ = _run_cmd(['sh', '-c', 'docker images -q | wc -l'], timeout=10)
+    images_total = int(img_out.strip()) if code == 0 and img_out.strip().isdigit() else 0
+
+    code, dangling_out, _ = _run_cmd(['sh', '-c', 'docker images -f dangling=true -q | wc -l'], timeout=10)
+    dangling_images = int(dangling_out.strip()) if code == 0 and dangling_out.strip().isdigit() else 0
+
+    code, vol_out, _ = _run_cmd(['sh', '-c', 'docker volume ls -qf dangling=true | wc -l'], timeout=10)
+    dangling_volumes = int(vol_out.strip()) if code == 0 and vol_out.strip().isdigit() else 0
+
+    code, df_out, _ = _run_cmd(['docker', 'system', 'df'], timeout=15)
+    reclaimable_summary = None
+    if code == 0 and df_out:
+        for ln in df_out.splitlines():
+            if ln.strip().startswith('Images') or ln.strip().startswith('Containers') or ln.strip().startswith('Local Volumes'):
+                continue
+            if 'Reclaimable' in ln:
+                continue
+        m = re.search(r'Total space reclaimable:\s*([^\n]+)', df_out)
+        if m:
+            reclaimable_summary = m.group(1).strip()
+
+    sev = 'ok'
+    if dangling_images > 20 or dangling_volumes > 20:
+        sev = 'warn'
+
+    return {
+        'severity': sev,
+        'containers_total': containers_total,
+        'containers_running': containers_running,
+        'images_total': images_total,
+        'dangling_images': dangling_images,
+        'dangling_volumes': dangling_volumes,
+        'reclaimable_summary': reclaimable_summary,
+    }
+
+
+def _read_host_config() -> dict:
+    fstab_path = '/host_etc/fstab' if os.path.exists('/host_etc/fstab') else '/etc/fstab'
+    fstab_entries = 0
+    fstab_mounts: list[dict] = []
+    if os.path.exists(fstab_path):
+        try:
+            with open(fstab_path) as f:
+                for ln in f:
+                    s = ln.strip()
+                    if s and not s.startswith('#'):
+                        fstab_entries += 1
+                        parts = s.split()
+                        if len(parts) >= 3:
+                            mountpoint = parts[1]
+                            fs = parts[2]
+                            is_mounted = os.path.ismount(mountpoint)
+                            fstab_mounts.append({
+                                'mountpoint': mountpoint,
+                                'fstype': fs,
+                                'mounted': is_mounted,
+                                'severity': 'ok' if is_mounted else 'warn',
+                            })
+        except Exception:
+            fstab_entries = 0
+
+    iptables_available = shutil.which('iptables-save') is not None
+    iptables_rules = None
+    iptables_error = None
+    if iptables_available:
+        code, out, err = _run_cmd(['iptables-save'], timeout=8)
+        if code == 0:
+            iptables_rules = len([ln for ln in out.splitlines() if ln.startswith('-A ')])
+        else:
+            iptables_error = err or 'Permission or runtime access issue'
+
+    return {
+        'severity': 'ok' if fstab_entries > 0 else 'warn',
+        'fstab_path': fstab_path if os.path.exists(fstab_path) else None,
+        'fstab_entries': fstab_entries,
+        'fstab_mounts': fstab_mounts,
+        'iptables_available': iptables_available,
+        'iptables_rules': iptables_rules,
+        'iptables_error': iptables_error,
+    }
+
+
+def _read_proxmox_info() -> dict:
+    """Best-effort Proxmox backup visibility via optional SSH target env vars."""
+    host = os.environ.get('PROXMOX_SSH_HOST', '').strip()
+    user = os.environ.get('PROXMOX_SSH_USER', 'root').strip()
+    password = os.environ.get('PROXMOX_SSH_PASSWORD', '').strip()
+    if not host:
+        return {
+            'severity': 'warn',
+            'configured': False,
+            'summary': 'Set PROXMOX_SSH_HOST (and key-based SSH) to enable backup visibility',
+            'backups': [],
+        }
+
+    use_password = bool(password and shutil.which('sshpass'))
+    ssh_base = [
+        'ssh',
+        '-o', f'BatchMode={"no" if use_password else "yes"}',
+        '-o', 'PreferredAuthentications=password,publickey',
+        '-o', 'ConnectTimeout=6',
+        '-o', 'StrictHostKeyChecking=no',
+        '-o', 'UserKnownHostsFile=/dev/null',
+        f'{user}@{host}',
+    ]
+
+    if use_password:
+        ssh_base = ['sshpass', '-p', password] + ssh_base
+
+    code, out, err = _run_cmd(ssh_base + ["ls -1t /mnt/backups 2>/dev/null | head -20"], timeout=12)
+    if code != 0:
+        return {
+            'severity': 'warn',
+            'configured': True,
+            'summary': f'Could not read Proxmox backups: {err or "SSH failed"}',
+            'backups': [],
+            'mounts': [],
+            'cron': [],
+        }
+
+    backups = [ln for ln in out.splitlines() if ln.strip()]
+
+    # Proxmox mount inventory
+    m_code, m_out, _ = _run_cmd(ssh_base + ["df -h --output=source,size,used,avail,pcent,target /mnt/* 2>/dev/null | tail -n +2"], timeout=12)
+    mounts = []
+    if m_code == 0 and m_out:
+        for ln in m_out.splitlines():
+            p = ln.split()
+            if len(p) >= 6:
+                mounts.append({
+                    'source': p[0],
+                    'size': p[1],
+                    'used': p[2],
+                    'avail': p[3],
+                    'pcent': p[4],
+                    'target': p[5],
+                })
+
+    # Proxmox root crontab
+    c_code, c_out, _ = _run_cmd(ssh_base + ["crontab -l 2>/dev/null | sed '/^#/d;/^$/d' | head -50"], timeout=10)
+    cron_lines = [ln for ln in c_out.splitlines() if ln.strip()] if c_code == 0 and c_out else []
+
+    sev = 'ok' if backups else 'warn'
+    return {
+        'severity': sev,
+        'configured': True,
+        'summary': f'Found {len(backups)} backup item(s) in /mnt/backups',
+        'backups': backups,
+        'mounts': mounts,
+        'cron': cron_lines,
+    }
+
+
+def _collect_extended() -> dict:
+    repos = _read_git_repos()
+    automation = _read_automation()
+    disks = _read_mount_inventory()
+    network = _read_network_health()
+    docker = _read_docker_overview()
+    host_cfg = _read_host_config()
+    proxmox = _read_proxmox_info()
+
+    severities = [repos['severity'], automation['severity'], disks['severity'], network['severity'], docker['severity'], host_cfg['severity'], proxmox['severity']]
+    overall = 'ok'
+    if 'crit' in severities:
+        overall = 'crit'
+    elif 'warn' in severities:
+        overall = 'warn'
+
+    return {
+        'ts': int(time.time()),
+        'overall': overall,
+        'repos': repos,
+        'automation': automation,
+        'disks': disks,
+        'network': network,
+        'docker': docker,
+        'host_config': host_cfg,
+        'proxmox': proxmox,
+    }
+
+
 def _collect() -> dict:
     cpu        = _read_cpu()
     mem        = _read_mem()
@@ -290,6 +1043,7 @@ def _persist_snap(snap: dict):
 
 def _metrics_loop():
     _init_db()
+    loop_count = 0
     while True:
         try:
             snap = _collect()
@@ -297,8 +1051,16 @@ def _metrics_loop():
             with _status_lock:
                 _latest_status.clear()
                 _latest_status.update(snap)
+
+            # Extended checks are heavier; refresh every 5 minutes.
+            if loop_count % 5 == 0:
+                ext = _collect_extended()
+                with _extended_lock:
+                    _latest_extended.clear()
+                    _latest_extended.update(ext)
         except Exception as ex:
             logger.warning(f'Metrics collection error: {ex}')
+        loop_count += 1
         time.sleep(60)
 
 
@@ -740,6 +1502,20 @@ def infra_status():
         snap = dict(_latest_status)
     if not snap:
         return jsonify({'error': 'collecting', 'overall': 'unknown'}), 202
+    return jsonify(snap)
+
+
+@app.route('/api/infra/extended')
+def infra_extended():
+    """Return heavier infrastructure checks (git, automation, disks, network, docker, host config)."""
+    with _extended_lock:
+        snap = dict(_latest_extended)
+    if not snap:
+        # Fall back to on-demand collection if startup race occurs.
+        try:
+            snap = _collect_extended()
+        except Exception as ex:
+            return jsonify({'error': str(ex), 'overall': 'unknown'}), 500
     return jsonify(snap)
 
 @app.route('/api/infra/history')
