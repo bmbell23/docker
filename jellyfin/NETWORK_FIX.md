@@ -1,7 +1,7 @@
 # Jellyfin Network Fix - January 19, 2026
 
 ## Problem
-Jellyfin was not accessible via Tailscale (100.123.154.40:8096) after container restart, even though:
+Jellyfin was not accessible via Tailscale (100.69.184.113:8096) after container restart, even though:
 - Container was running and healthy
 - Localhost access worked (127.0.0.1:8096)
 - Local network access worked (10.0.0.160:8096)
@@ -81,7 +81,7 @@ sudo iptables -t nat -L DOCKER -n | grep 8096
 # Test access
 curl -I http://localhost:8096          # Local
 curl -I http://10.0.0.160:8096         # LAN
-curl -I http://100.123.154.40:8096     # Tailscale
+curl -I http://100.69.184.113:8096     # Tailscale
 ```
 
 ## Persistence on Reboot
@@ -110,7 +110,7 @@ docker compose up -d
 
 - **LAN Network:** 10.0.0.0/24 (gateway: 10.0.0.1)
 - **Server LAN IP:** 10.0.0.160
-- **Server Tailscale IP:** 100.123.154.40
+- **Server Tailscale IP:** 100.69.184.113
 - **Jellyfin Docker Network:** 172.23.0.0/16 (br-4d578cc17712)
 - **Jellyfin Container IP:** 172.23.0.2
 - **Jellyfin Ports:** 8096 (HTTP), 8920 (HTTPS), 7359/udp (discovery), 1900/udp (DLNA)
@@ -126,6 +126,6 @@ docker compose up -d
 ✅ **FIXED** - January 19, 2026
 - Accessible on localhost: http://127.0.0.1:8096
 - Accessible on LAN: http://10.0.0.160:8096
-- Accessible on Tailscale: http://100.123.154.40:8096
+- Accessible on Tailscale: http://100.69.184.113:8096
 - Persists across reboots via systemd service
 

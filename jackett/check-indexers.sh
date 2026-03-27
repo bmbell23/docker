@@ -28,7 +28,7 @@ if docker-compose logs --tail=10 | grep -q "Exception (thepiratebay)"; then
     echo "   Error shows: Exception (thepiratebay)"
     echo
     echo "🔧 SOLUTION:"
-    echo "   1. Go to: http://100.123.154.40:9117"
+    echo "   1. Go to: http://100.69.184.113:9117"
     echo "   2. DELETE 'The Pirate Bay' indexer"
     echo "   3. ADD 'The Pirate Bay (Fixed)' indexer"
     echo

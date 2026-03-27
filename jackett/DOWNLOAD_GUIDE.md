@@ -37,7 +37,7 @@ When you click "Download locally":
 ## Recommended Workflows
 
 ### Method 1: Use Magnet Links (Easiest)
-1. Search in Jackett web UI: `http://100.123.154.40:9117`
+1. Search in Jackett web UI: `http://100.69.184.113:9117`
 2. Click the **magnet icon** 🧲 next to the torrent you want
 3. Your browser opens qBittorrent
 4. Download starts automatically
@@ -46,7 +46,7 @@ When you click "Download locally":
 This lets you search directly from qBittorrent without opening Jackett's web UI.
 
 **Setup (one-time):**
-1. Open qBittorrent: `http://100.123.154.40:2285`
+1. Open qBittorrent: `http://100.69.184.113:2285`
 2. Go to **View → Search Engine** (or press F3)
 3. Click **Search plugins** button (bottom right)
 4. Click **Install a new one** → **Web link**
@@ -58,7 +58,7 @@ This lets you search directly from qBittorrent without opening Jackett's web UI.
 2. Right-click → **Edit**
 3. Set these values:
    - `api_key`: Your Jackett API key (found in Jackett web UI, top right)
-   - `url`: `http://100.123.154.40:9117`
+   - `url`: `http://100.69.184.113:9117`
 4. Save
 
 **Usage:**

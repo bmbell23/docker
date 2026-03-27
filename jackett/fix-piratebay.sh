@@ -28,7 +28,7 @@ fi
 docker-compose up -d
 
 echo "Jackett restarted. Please:"
-echo "1. Go to http://100.123.154.40:9117"
+echo "1. Go to http://100.69.184.113:9117"
 echo "2. Remove The Pirate Bay indexer"
 echo "3. Re-add it from the indexer list"
 echo "4. Test the indexer"

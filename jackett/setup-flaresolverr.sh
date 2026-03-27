@@ -33,7 +33,7 @@ echo "=== MANUAL CONFIGURATION REQUIRED ==="
 echo
 echo "Please complete these steps manually in the Jackett web UI:"
 echo
-echo "1. Open Jackett: http://100.123.154.40:9117"
+echo "1. Open Jackett: http://100.69.184.113:9117"
 echo "2. Click the wrench icon (Settings) in top right"
 echo "3. Scroll to 'FlareSolverr' section"
 echo "4. Set FlareSolverr URL to: http://127.0.0.1:8191"

@@ -22,14 +22,14 @@ Added scan buttons to:
 You need to obtain API keys/tokens for the services you want to scan:
 
 #### Jellyfin API Key
-1. Log into your Jellyfin web interface (http://100.123.154.40:8096)
+1. Log into your Jellyfin web interface (http://100.69.184.113:8096)
 2. Go to **Dashboard** → **API Keys**
 3. Click **+** to create a new API key
 4. Give it a name (e.g., "Dashboard Scan")
 5. Copy the generated API key
 
 #### Audiobookshelf API Token
-1. Log into your Audiobookshelf web interface (http://100.123.154.40:13378)
+1. Log into your Audiobookshelf web interface (http://100.69.184.113:13378)
 2. Click the **Settings** gear icon (top right)
 3. Go to **Users**
 4. Click on your user account
@@ -87,7 +87,7 @@ You'll see a toast notification indicating whether the scan started successfully
 ### "Failed to trigger scan" error
 - Verify the API key/token is correct
 - Make sure Jellyfin/Audiobookshelf is running
-- Check that the URLs in `app.py` match your setup (default: http://100.123.154.40:8096 for Jellyfin, http://100.123.154.40:13378 for Audiobookshelf)
+- Check that the URLs in `app.py` match your setup (default: http://100.69.184.113:8096 for Jellyfin, http://100.69.184.113:13378 for Audiobookshelf)
 
 ### Scan button doesn't appear
 - Clear your browser cache

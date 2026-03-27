@@ -1,7 +1,7 @@
 # Docker iptables Fix - Jellyfin & Immich Access Issues
 
 ## Problem Summary
-After a Docker daemon restart on 2026-01-01, both Jellyfin and Immich became inaccessible from external networks (192.168.0.158 and Tailscale 100.123.154.40), even though:
+After a Docker daemon restart on 2026-01-01, both Jellyfin and Immich became inaccessible from external networks (192.168.0.158 and Tailscale 100.69.184.113), even though:
 - Containers were running and healthy
 - Localhost access worked fine
 - docker-proxy processes were listening on ports

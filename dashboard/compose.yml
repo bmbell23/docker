@@ -5,12 +5,15 @@ services:
     container_name: dashboard
     build: .
     restart: unless-stopped
-    ports:
-      - "8001:5000"
+    network_mode: host
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /home/brandon/projects/docker:/home/brandon/projects/docker:ro
+      - /home/brandon/projects:/home/brandon/projects:ro
+      - dashboard_data:/app/data
+      # Read-only disk mounts so the health page can report real usage
+      - /mnt/docker:/mnt/docker:ro
+      - /mnt/boston:/mnt/boston:ro
 
     environment:
       - TZ=America/New_York
@@ -18,23 +21,27 @@ services:
       # API keys for library scanning - configure these to enable scan buttons
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
       - AUDIOBOOKSHELF_API_TOKEN=${AUDIOBOOKSHELF_API_TOKEN:-}
+      - STASH_API_KEY=${STASH_API_KEY:-}
 
     # Resource limits
     deploy:
       resources:
         limits:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
         reservations:
           cpus: '0.1'
-          memory: 64M
+          memory: 96M
 
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  dashboard_data:
 
 networks:
   default:

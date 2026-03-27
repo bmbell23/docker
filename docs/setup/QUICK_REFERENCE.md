@@ -13,34 +13,34 @@ This fixes all 18 services on your homepage in one command.
 ## 📋 Service URLs (Tailscale)
 
 ### Media & Entertainment
-- **Jellyfin**: http://100.123.154.40:8096
-- **Audiobookshelf**: http://100.123.154.40:13378
-- **Navidrome**: http://100.123.154.40:4533
-- **Romm**: http://100.123.154.40:8082
+- **Jellyfin**: http://100.69.184.113:8096
+- **Audiobookshelf**: http://100.69.184.113:13378
+- **Navidrome**: http://100.69.184.113:4533
+- **Romm**: http://100.69.184.113:8082
 
 ### Books
-- **GreatReads (Prod)**: http://100.123.154.40:8007
-- **GreatReads (Dev)**: http://100.123.154.40:8008
-- **Kavita**: http://100.123.154.40:5000
+- **GreatReads (Prod)**: http://100.69.184.113:8007
+- **GreatReads (Dev)**: http://100.69.184.113:8008
+- **Kavita**: http://100.69.184.113:5000
 
 ### Forge Apps
-- **LifeForge**: http://100.123.154.40:8004
-- **ArtForge**: http://100.123.154.40:8003
-- **WordForge**: http://100.123.154.40:8002
-- **CodeForge**: http://100.123.154.40:8009
+- **LifeForge**: http://100.69.184.113:8004
+- **ArtForge**: http://100.69.184.113:8003
+- **WordForge**: http://100.69.184.113:8002
+- **CodeForge**: http://100.69.184.113:8009
 
 ### Photos
-- **Immich**: http://100.123.154.40:2283
+- **Immich**: http://100.69.184.113:2283
 
 ### Downloads
-- **qBittorrent**: http://100.123.154.40:2285
-- **Jackett**: http://100.123.154.40:9117
-- **YT-DLP Web**: http://100.123.154.40:8998
+- **qBittorrent**: http://100.69.184.113:2285
+- **Jackett**: http://100.69.184.113:9117
+- **YT-DLP Web**: http://100.69.184.113:8998
 
 ### Other
-- **Dashboard**: http://100.123.154.40:8001
-- **Picard**: http://100.123.154.40:5800
-- **Beets**: http://100.123.154.40:8337
+- **Dashboard**: http://100.69.184.113:8001
+- **Picard**: http://100.69.184.113:5800
+- **Beets**: http://100.69.184.113:8337
 
 ## 🔧 Common Commands
 
@@ -96,7 +96,7 @@ journalctl -u docker-iptables.service
 
 Immich needs initial user creation:
 
-1. Go to http://100.123.154.40:2283
+1. Go to http://100.69.184.113:2283
 2. Complete the setup wizard
 3. Create admin user
 4. See `IMMICH_SETUP.md` for details

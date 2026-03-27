@@ -29,8 +29,8 @@ Created a complete Outline wiki setup with:
 - **.env.example**: Environment variable template
 
 **Services**:
-- Outline: http://100.123.154.40:3000
-- MinIO Console: http://100.123.154.40:9001
+- Outline: http://100.69.184.113:3000
+- MinIO Console: http://100.69.184.113:9001
 
 ### 3. Added Outline Card to Dashboard ✅
 
@@ -60,7 +60,7 @@ sudo docker compose up -d
 sudo reboot
 ```
 
-After restart, the Outline card will appear in the "Tools" section at http://100.123.154.40:8001
+After restart, the Outline card will appear in the "Tools" section at http://100.69.184.113:8001
 
 ### Step 2: Set Up Outline
 
@@ -101,7 +101,7 @@ openssl rand -hex 32  # Copy for UTILS_SECRET
 docker compose up -d outline-minio
 
 # 4. Create MinIO bucket
-# Open http://100.123.154.40:9001
+# Open http://100.69.184.113:9001
 # Login: minio_admin / (your password)
 # Create bucket named "outline"
 
@@ -115,7 +115,7 @@ docker compose logs -f outline
 ### Step 3: Access Outline
 
 1. Wait 1-2 minutes for database migration
-2. Open http://100.123.154.40:3000
+2. Open http://100.69.184.113:3000
 3. Configure authentication (see outline/README.md)
 
 ### Step 4: Add Immich KBA to Outline

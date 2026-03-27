@@ -27,7 +27,7 @@
    ```bash
    # Restart a single container (PREFERRED)
    docker restart <container_name>
-   
+
    # If restart doesn't work, stop and start
    docker stop <container_name>
    docker start <container_name>
@@ -37,7 +37,7 @@
    ```bash
    # Restart a single service (PREFERRED)
    docker-compose restart <service_name>
-   
+
    # Only if absolutely necessary and user approves:
    docker-compose down <service_name>
    docker-compose up -d <service_name>
@@ -47,10 +47,10 @@
    ```bash
    # Find the process
    ps aux | grep <process_name>
-   
+
    # Kill gracefully
    kill <pid>
-   
+
    # Only if necessary
    kill -9 <pid>
    ```
@@ -107,3 +107,34 @@
 - Never manually edit production database
 - Always backup before migrations
 
+
+# AI Agent Guidelines for docker
+
+**Shared server guidelines** (iptables fix, container inventory, Tailscale IP, forbidden ops):
+→ `/home/brandon/projects/.augment-guidelines`
+
+---
+
+## 🚨 Critical Rules (Always Apply)
+
+- **NEVER**: `sudo reboot`, `shutdown`, `docker-compose down`, `DROP DATABASE`, `pg_resetwal`
+- **Tailscale IP**: `100.69.184.113`
+- **Container**: see docker-compose.yml
+- **After any redeploy**, if externally unreachable: check for stale iptables DNAT rules:
+  `sudo iptables-save | grep DNAT` — remove any duplicate entries for the service port
+
+## Restarting Services
+
+`docker restart` / `docker-compose restart` FAIL on this server. Use:
+```bash
+PID=$(docker inspect <container_name> --format '{{.State.Pid}}')
+kill $PID
+cd /home/brandon/projects/docker
+docker-compose up -d
+```
+
+## Project Details
+
+- **Directory**: `/home/brandon/projects/docker/`
+- **Port**: multiple
+- **URL**: see container inventory

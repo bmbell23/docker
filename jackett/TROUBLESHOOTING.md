@@ -15,7 +15,7 @@
 ## Quick Fix Steps
 
 1. **Configure FlareSolverr in Jackett:**
-   - Go to: http://100.123.154.40:9117
+   - Go to: http://100.69.184.113:9117
    - Settings → FlareSolverr URL: `http://127.0.0.1:8191`
    - Save settings
 

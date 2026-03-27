@@ -10,7 +10,7 @@ Jackett works as a proxy server: it translates queries from apps (like qBittorre
    ```
 
 2. **Access Web UI:**
-   - URL: `http://100.123.154.40:9117`
+   - URL: `http://100.69.184.113:9117`
    - No default credentials - set up on first access
 
 3. **Add Indexers:**
@@ -49,7 +49,7 @@ You'll need this to integrate with other apps.
 FlareSolverr is now included to bypass Cloudflare protection on sites like 1337x.
 
 **Configure FlareSolverr in Jackett:**
-1. Go to Jackett web UI: `http://100.123.154.40:9117`
+1. Go to Jackett web UI: `http://100.69.184.113:9117`
 2. Click the wrench icon (Settings) in top right
 3. Scroll down to "FlareSolverr" section
 4. Set **FlareSolverr URL** to: `http://127.0.0.1:8191`

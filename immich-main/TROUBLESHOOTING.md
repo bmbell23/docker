@@ -95,7 +95,7 @@ docker ps --filter "name=immich"
 docker compose logs immich-server --tail=50
 
 # Access Immich web interface
-# Open browser to: http://100.123.154.40:2283 (or your server IP)
+# Open browser to: http://100.69.184.113:2283 (or your server IP)
 ```
 
 ### Prevention

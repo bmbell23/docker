@@ -14,3 +14,87 @@ require_auth: true
 # Queue size (concurrent downloads)
 queue_size: 2
 
+# Default yt-dlp options
+# These will be used for all downloads unless overridden
+ytdlp_options:
+  # Output template - organize files by type
+  output: "/downloads/%(title)s.%(ext)s"
+
+  # Format selection - best quality video+audio or best audio
+  format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+
+  # Merge output format
+  merge_output_format: "mp4"
+
+  # Embed metadata
+  add_metadata: true
+
+  # Embed thumbnail in audio files
+  embed_thumbnail: true
+
+  # Write thumbnail to disk
+  write_thumbnail: false
+
+  # Prefer free formats
+  prefer_free_formats: false
+
+  # Keep video file after post-processing
+  keep_video: false
+
+  # No playlist - only download single video
+  no_playlist: true
+
+  # Continue on download errors
+  ignore_errors: false
+
+  # Restrict filenames to ASCII characters
+  restrict_filenames: true
+
+  # No overwrites
+  no_overwrites: true
+
+  # Continue partially downloaded files
+  continue_dl: true
+
+# Preset configurations for different download types
+presets:
+  # MP3 Audio preset - for music downloads
+  mp3:
+    name: "MP3 Audio (Music)"
+    description: "Download as MP3 audio with metadata and thumbnail"
+    options:
+      format: "bestaudio/best"
+      extract_audio: true
+      audio_format: "mp3"
+      audio_quality: "0"  # Best quality
+      embed_thumbnail: true
+      add_metadata: true
+      output: "/downloads/music/%(title)s.%(ext)s"
+      postprocessor_args:
+        - "-ar"
+        - "48000"  # Sample rate
+
+  # Full Video preset - for video downloads
+  video:
+    name: "Full Video (Best Quality)"
+    description: "Download full video in best quality MP4"
+    options:
+      format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+      merge_output_format: "mp4"
+      embed_thumbnail: false
+      add_metadata: true
+      output: "/downloads/video/%(title)s.%(ext)s"
+
+  # Audio Only (M4A) preset
+  m4a:
+    name: "M4A Audio"
+    description: "Download as M4A audio (better quality than MP3)"
+    options:
+      format: "bestaudio[ext=m4a]/bestaudio/best"
+      extract_audio: true
+      audio_format: "m4a"
+      audio_quality: "0"
+      embed_thumbnail: true
+      add_metadata: true
+      output: "/downloads/music/%(title)s.%(ext)s"
+

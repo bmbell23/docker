@@ -1,0 +1,17 @@
+[Unit]
+Description=Calibre ACSM Watcher — auto-import .acsm ebooks into Calibre
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=brandon
+ExecStart=/home/brandon/projects/docker/calibre/watch-acsm.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

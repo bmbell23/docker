@@ -1,7 +1,7 @@
 # Docker Networking Fix for External Access
 
 ## Problem
-Docker containers were not accessible externally (192.168.0.158:PORT or 100.123.154.40:PORT) even though:
+Docker containers were not accessible externally (192.168.0.158:PORT or 100.69.184.113:PORT) even though:
 - Localhost access worked fine
 - UFW was configured correctly
 - Docker was creating NAT rules

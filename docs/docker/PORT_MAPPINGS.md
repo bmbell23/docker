@@ -1,6 +1,9 @@
 # Docker Container Port Mappings
 
-**Last Updated**: 2026-01-15
+**Last Updated**: 2026-03-16
+
+> ⚠️ **Tailscale IP is `100.69.184.113`** — URLs below using `10.0.0.160` are local-network only.
+> Navidrome, Kavita, Immich, Picard, and Outline are no longer running — rows retained for reference only.
 
 This is the **authoritative reference** for all Docker container port mappings. If a port doesn't match this table, the container configuration is wrong.
 
@@ -9,7 +12,7 @@ This is the **authoritative reference** for all Docker container port mappings. 
 | Service | External Port | Internal Port | Protocol | Access URL | Notes |
 |---------|--------------|---------------|----------|------------|-------|
 | **Media Services** |
-| Immich | 2283 | 2283 | TCP | http://10.0.0.160:2283 | Photo management ⭐ |
+| ~~Immich~~ (removed) | 2283 | 2283 | TCP | http://10.0.0.160:2283 | Photo management ⭐ |
 | Jellyfin | 8096 | 8096 | TCP | http://10.0.0.160:8096 | Video streaming ⭐ |
 | Jellyfin HTTPS | 8920 | 8920 | TCP | https://10.0.0.160:8920 | Optional HTTPS |
 | Jellyfin Discovery | 7359 | 7359 | UDP | - | Service discovery |
@@ -18,12 +21,12 @@ This is the **authoritative reference** for all Docker container port mappings. 
 | **Gaming & ROMs** |
 | RomM | 8080 | 8080 | TCP | http://10.0.0.160:8080 | ROM manager ⭐ |
 | **Books & Reading** |
-| Kavita | 5000 | 5000 | TCP | http://10.0.0.160:5000 | Comic/ebook reader |
+| ~~Kavita~~ (removed) | 5000 | 5000 | TCP | http://10.0.0.160:5000 | Comic/ebook reader |
 | Audiobookshelf | 13378 | 80 | TCP | http://10.0.0.160:13378 | Audiobook server ⭐ |
 | **Music Services** |
-| Navidrome | 4533 | 4533 | TCP | http://10.0.0.160:4533 | Music streaming |
+| ~~Navidrome~~ (removed) | 4533 | 4533 | TCP | http://10.0.0.160:4533 | Music streaming |
 | Beets | 8337 | 8337 | TCP | http://10.0.0.160:8337 | Music library manager |
-| Picard | 5800 | 5800 | TCP | http://10.0.0.160:5800 | Music tagger (VNC) |
+| ~~Picard~~ (removed) | 5800 | 5800 | TCP | http://10.0.0.160:5800 | Music tagger (VNC) |
 | **Download Tools** |
 | qBittorrent | 2285 | 8080 | TCP | http://10.0.0.160:2285 | Torrent client (via VPN) ⭐ |
 | Jackett | 9117 | 9117 | TCP | http://10.0.0.160:9117 | Torrent indexer (via VPN) |
@@ -31,7 +34,7 @@ This is the **authoritative reference** for all Docker container port mappings. 
 | YT-DLP Web | 8998 | 3033 | TCP | http://10.0.0.160:8998 | YouTube downloader |
 | FlareSolverr | - | 8191 | TCP | - | Cloudflare bypass (internal) |
 | **Productivity & Wiki** |
-| Outline | - | 3000 | TCP | - | Wiki/docs (currently restarting) |
+| ~~Outline~~ (removed) | - | 3000 | TCP | - | Wiki/docs (currently restarting) |
 | Dashboard | 8001 | 5000 | TCP | http://10.0.0.160:8001 | Custom service dashboard ⭐ |
 | **Forge Apps** |
 | WordForge | 8002 | 8002 | TCP | http://10.0.0.160:8002 | Writing/document app |
@@ -66,9 +69,9 @@ This is the **authoritative reference** for all Docker container port mappings. 
 
 ## Tailscale Access
 
-All services are accessible via Tailscale IP: `100.123.154.40`
+All services are accessible via Tailscale IP: `100.69.184.113`
 
-Example: `http://100.123.154.40:8080` for RomM
+Example: `http://100.69.184.113:8080` for RomM
 
 ## Quick Access URLs (Local Network)
 
@@ -101,7 +104,7 @@ When adding a new service:
 
 ## Removing Services
 
-To remove Kavita and Navidrome (if desired):
+Kavita and Navidrome have been removed. For reference, the removal commands were:
 ```bash
 cd /home/brandon/projects/docker/kavita && docker-compose down
 cd /home/brandon/projects/docker/navidrome && docker-compose down

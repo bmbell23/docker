@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Health</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐳</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+        :root {
+            --bg: #0a0a0a; --card: #1a1a1a; --border: #2a2a2a;
+            --orange: #ff6b35; --white: #e8e8e8; --muted: #888;
+            --green: #34c759; --yellow: #ff9f0a; --red: #ff453a;
+            --ok-bg: rgba(52,199,89,.12); --warn-bg: rgba(255,159,10,.12); --crit-bg: rgba(255,69,58,.12);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--white); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+        /* ── Nav ── */
+        .nav { display: flex; align-items: center; gap: 1rem; padding: 1.2rem 2rem; border-bottom: 1px solid var(--border); }
+        .back-btn { color: var(--orange); text-decoration: none; font-size: .9rem; font-weight: 600; display: flex; align-items: center; gap: .4rem; transition: opacity .2s; }
+        .back-btn:hover { opacity: .7; }
+        .nav-title { font-size: 1.1rem; font-weight: 700; letter-spacing: .5px; }
+        .last-updated { margin-left: auto; font-size: .75rem; color: var(--muted); }
+
+        /* ── Banner ── */
+        .banner { margin: 1.5rem 2rem .5rem; padding: 1rem 1.5rem; border-radius: 1rem; border: 1.5px solid; display: flex; align-items: center; gap: .8rem; font-size: 1rem; font-weight: 700; }
+        .banner.ok   { background: var(--ok-bg);   border-color: var(--green);  color: var(--green);  }
+        .banner.warn { background: var(--warn-bg);  border-color: var(--yellow); color: var(--yellow); }
+        .banner.crit { background: var(--crit-bg);  border-color: var(--red);    color: var(--red);    animation: pulse 1.5s infinite; }
+        .banner.unknown { background: rgba(255,255,255,.05); border-color: var(--border); color: var(--muted); }
+        @keyframes pulse { 0%,100%{box-shadow:none} 50%{box-shadow:0 0 18px rgba(255,69,58,.4)} }
+
+        /* ── Sections ── */
+        .section { margin: 1.5rem 2rem; }
+        .section-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 1rem; }
+
+        /* ── Metric bars ── */
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .75rem; }
+        .metric-card { background: var(--card); border: 1px solid var(--border); border-radius: .75rem; padding: 1rem 1.2rem; }
+        .metric-label { font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: .4rem; }
+        .metric-value { font-size: 1.5rem; font-weight: 700; margin-bottom: .5rem; }
+        .metric-sub   { font-size: .72rem; color: var(--muted); margin-bottom: .6rem; }
+        .bar-track { background: var(--border); border-radius: 999px; height: 6px; overflow: hidden; position: relative; }
+        .bar-fill  { height: 100%; border-radius: 999px; transition: width .6s ease; }
+        .bar-fill.ok   { background: var(--green);  }
+        .bar-fill.warn { background: var(--yellow); }
+        .bar-fill.crit { background: var(--red);    }
+        /* threshold tick marks */
+        .bar-ticks { position: relative; height: 0; }
+        .bar-tick  { position: absolute; top: -8px; width: 1px; height: 6px; background: rgba(255,255,255,.25); }
+
+        /* ── Container grid ── */
+        .ctr-categories { display: flex; flex-direction: column; gap: 1rem; }
+        .ctr-category-label { font-size: .68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: .4rem; }
+        .ctr-row { display: flex; flex-wrap: wrap; gap: .5rem; }
+        .ctr-pill { display: flex; align-items: center; gap: .4rem; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: .3rem .8rem; font-size: .8rem; transition: border-color .2s; }
+        .ctr-pill.ok   { border-color: rgba(52,199,89,.3);  }
+        .ctr-pill.warn { border-color: rgba(255,159,10,.4); }
+        .ctr-pill.crit { border-color: rgba(255,69,58,.4);  }
+        .ctr-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .ctr-dot.ok   { background: var(--green);  box-shadow: 0 0 5px var(--green);  }
+        .ctr-dot.warn { background: var(--yellow); box-shadow: 0 0 5px var(--yellow); }
+        .ctr-dot.crit { background: var(--red);    box-shadow: 0 0 5px var(--red);    animation: pulse 1.5s infinite; }
+        .ctr-name  { font-weight: 600; }
+        .ctr-state { font-size: .68rem; color: var(--muted); }
+
+        /* ── Problems list ── */
+        .problems-box { margin: 0 2rem 1rem; padding: 1rem 1.4rem; background: rgba(255,69,58,.08); border: 1.5px solid rgba(255,69,58,.35); border-radius: .75rem; display: none; }
+        .problems-box.visible { display: block; }
+        .problems-box.warn { background: rgba(255,159,10,.08); border-color: rgba(255,159,10,.35); }
+        .problems-header { font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; color: var(--red); margin-bottom: .6rem; display: flex; align-items: center; gap: .4rem; }
+        .problems-box.warn .problems-header { color: var(--yellow); }
+        .problems-list { list-style: none; display: flex; flex-direction: column; gap: .35rem; }
+        .problems-list li { font-size: .85rem; display: flex; align-items: center; gap: .5rem; color: var(--white); }
+        .problems-list li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+        .problems-box.warn .problems-list li::before { background: var(--yellow); }
+
+        /* ── Resource pie charts ── */
+        .pie-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .pie-card { background: var(--card); border: 1px solid var(--border); border-radius: .75rem; padding: 1rem; display: flex; flex-direction: column; align-items: center; }
+        .pie-title { font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: .8rem; align-self: flex-start; }
+        .pie-canvas { width: 100% !important; max-height: 220px !important; }
+        @media (max-width: 800px) { .pie-grid { grid-template-columns: 1fr; } }
+
+        /* ── History charts ── */
+        .chart-tabs { display: flex; gap: .4rem; margin-bottom: 1rem; }
+        .chart-tab { background: var(--card); border: 1px solid var(--border); border-radius: .5rem; padding: .3rem .8rem; font-size: .75rem; font-weight: 600; cursor: pointer; color: var(--muted); transition: all .2s; }
+        .chart-tab.active { border-color: var(--orange); color: var(--orange); }
+        .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: .75rem; padding: 1rem; }
+        .chart-title { font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: .8rem; }
+        .chart-canvas { width: 100% !important; height: 160px !important; }
+        @media (max-width: 800px) { .charts-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<nav class="nav">
+    <a href="/" class="back-btn"><i class="fas fa-arrow-left"></i> Dashboard</a>
+    <span class="nav-title"><i class="fas fa-heartbeat" style="color:var(--orange)"></i> Server Health</span>
+    <span class="last-updated" id="last-updated">—</span>
+</nav>
+
+<div id="banner" class="banner unknown">
+    <i class="fas fa-circle-notch fa-spin"></i> Loading&hellip;
+</div>
+
+<!-- Problems detail — only shown when overall != ok -->
+<div id="problems-box" class="problems-box">
+    <div class="problems-header"><i class="fas fa-exclamation-circle"></i> <span id="problems-header-text">Issues detected</span></div>
+    <ul class="problems-list" id="problems-list"></ul>
+</div>
+
+<!-- Server Metrics -->
+<div class="section">
+    <div class="section-title">Server Metrics</div>
+    <div class="metrics-grid" id="metrics-grid"></div>
+</div>
+
+<!-- Resource Consumers -->
+<div class="section">
+    <div class="section-title">Resource Consumers</div>
+    <div class="pie-grid">
+        <div class="pie-card"><div class="pie-title">CPU usage by container</div><canvas id="chart-cpu-pie" class="pie-canvas"></canvas></div>
+        <div class="pie-card"><div class="pie-title">Memory usage by container</div><canvas id="chart-mem-pie" class="pie-canvas"></canvas></div>
+    </div>
+</div>
+
+<!-- Container Status -->
+<div class="section">
+    <div class="section-title">Container Status</div>
+    <div class="ctr-categories" id="ctr-categories"></div>
+</div>
+
+<!-- History Charts -->
+<div class="section">
+    <div class="section-title">History</div>
+    <div class="chart-tabs" id="chart-tabs">
+        <button class="chart-tab" data-hours="6">6h</button>
+        <button class="chart-tab active" data-hours="24">24h</button>
+        <button class="chart-tab" data-hours="72">3d</button>
+        <button class="chart-tab" data-hours="168">7d</button>
+    </div>
+    <div class="charts-grid">
+        <div class="chart-card"><div class="chart-title">CPU &amp; RAM &amp; Swap</div><canvas id="chart-resources" class="chart-canvas"></canvas></div>
+        <div class="chart-card"><div class="chart-title">Disk Usage</div><canvas id="chart-disks" class="chart-canvas"></canvas></div>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const SEV_LABEL = { ok: 'ok', warn: 'warn', crit: 'crit', unknown: 'unknown' };
+const BANNER_TEXT = {
+    ok:      { icon: 'fa-check-circle',        msg: 'All systems nominal — everything looks good.' },
+    warn:    { icon: 'fa-exclamation-triangle', msg: 'Degraded — some metrics or containers need attention.' },
+    crit:    { icon: 'fa-times-circle',         msg: 'Critical — immediate attention required.' },
+    unknown: { icon: 'fa-circle-notch fa-spin', msg: 'Loading\u2026' },
+};
+
+function setBanner(overall) {
+    const el = $('banner');
+    const b = BANNER_TEXT[overall] || BANNER_TEXT.unknown;
+    el.className = `banner ${overall}`;
+    el.innerHTML = `<i class="fas ${b.icon}"></i> ${b.msg}`;
+}
+
+function fmtMB(mb) {
+    return mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB';
+}
+
+// ── Metrics ───────────────────────────────────────────────────────────────────
+function renderMetrics(snap) {
+    const metrics = [
+        { key: 'cpu',         label: 'CPU',         val: snap.cpu.pct + '%',
+          sub: '',            pct: snap.cpu.pct,    sev: snap.cpu.severity },
+        { key: 'ram',         label: 'RAM',
+          val: fmtMB(snap.ram.used_mb),
+          sub: 'of ' + fmtMB(snap.ram.total_mb),
+          pct: snap.ram.pct, sev: snap.ram.severity },
+        { key: 'swap',        label: 'Swap',
+          val: fmtMB(snap.swap.used_mb),
+          sub: 'of ' + fmtMB(snap.swap.total_mb),
+          pct: snap.swap.pct, sev: snap.swap.severity },
+        { key: 'docker_disk', label: 'Docker Disk',
+          val: snap.docker_disk.used_gb + ' GB',
+          sub: 'of ' + snap.docker_disk.total_gb + ' GB',
+          pct: snap.docker_disk.pct, sev: snap.docker_disk.severity },
+        { key: 'nas_disk',    label: 'NAS (boston)',
+          val: snap.nas_disk.used_gb + ' GB',
+          sub: 'of ' + snap.nas_disk.total_gb + ' GB',
+          pct: snap.nas_disk.pct, sev: snap.nas_disk.severity },
+    ];
+    const t = snap.thresholds;
+    $('metrics-grid').innerHTML = metrics.map(m => {
+        const th = t[m.key] || {};
+        const warnTick = th.warn ? `<div class="bar-tick" style="left:${th.warn}%"></div>` : '';
+        const critTick = th.crit ? `<div class="bar-tick" style="left:${th.crit}%"></div>` : '';
+        return `<div class="metric-card">
+          <div class="metric-label">${m.label}</div>
+          <div class="metric-value" style="color:var(--${m.sev === 'ok' ? 'white' : m.sev === 'warn' ? 'yellow' : 'red'})">${m.val}</div>
+          ${m.sub ? `<div class="metric-sub">${m.sub}</div>` : ''}
+          <div class="bar-ticks">${warnTick}${critTick}</div>
+          <div class="bar-track"><div class="bar-fill ${m.sev}" style="width:${Math.min(m.pct,100)}%"></div></div>
+        </div>`;
+    }).join('');
+}
+
+// ── Problems list ─────────────────────────────────────────────────────────────
+function renderProblems(snap) {
+    const box      = $('problems-box');
+    const listEl   = $('problems-list');
+    const headerEl = $('problems-header-text');
+    const problems = [];
+
+    // Resource issues
+    const metricLabels = { cpu: 'CPU', ram: 'RAM', swap: 'Swap', docker_disk: 'Docker disk', nas_disk: 'NAS disk' };
+    [['cpu','cpu'],['ram','ram'],['swap','swap'],['docker_disk','docker_disk'],['nas_disk','nas_disk']].forEach(([key, sk]) => {
+        const m = snap[key];
+        if (m && m.severity && m.severity !== 'ok') {
+            problems.push(`${metricLabels[sk]} at ${m.pct}% — ${m.severity === 'crit' ? 'critical' : 'elevated'}`);
+        }
+    });
+
+    // Container issues
+    (snap.containers || []).forEach(c => {
+        if      (c.state === 'missing')    problems.push(`${c.label} — not found (container missing)`);
+        else if (c.state === 'stopped')    problems.push(`${c.label} — stopped`);
+        else if (c.health === 'unhealthy') problems.push(`${c.label} — running but health check failing`);
+        else if (c.health === 'starting')  problems.push(`${c.label} — health check still starting`);
+    });
+
+    if (problems.length === 0) {
+        box.classList.remove('visible');
+        return;
+    }
+    const isCrit = snap.overall === 'crit';
+    box.className = `problems-box visible${isCrit ? '' : ' warn'}`;
+    headerEl.textContent = `${problems.length} issue${problems.length > 1 ? 's' : ''} detected`;
+    listEl.innerHTML = problems.map(p => `<li>${p}</li>`).join('');
+}
+
+// ── Pie charts ────────────────────────────────────────────────────────────────
+const PIE_PALETTE = [
+    '#ff6b35','#30b0ff','#34c759','#bf5af2','#ff9f0a',
+    '#ff453a','#64d2ff','#ffd60a','#ff375f','#30d158',
+    '#5e5ce6','#ac8e68','#6ac4dc','#63e6be','#f06595',
+];
+
+let chartCpuPie = null, chartMemPie = null;
+
+function buildPies(stats) {
+    if (!stats || stats.length === 0) return;
+
+    const TOP = 9;  // show top N individually, rest as "Other"
+
+    function makePieData(field) {
+        const sorted = [...stats].sort((a, b) => b[field] - a[field]);
+        const top    = sorted.slice(0, TOP);
+        const rest   = sorted.slice(TOP).reduce((s, x) => s + x[field], 0);
+        const labels = top.map(x => x.name);
+        const data   = top.map(x => x[field]);
+        if (rest > 0.01) { labels.push('Other'); data.push(parseFloat(rest.toFixed(2))); }
+        return { labels, data };
+    }
+
+    const pieCfg = (labels, data, unit) => ({
+        type: 'doughnut',
+        data: {
+            labels,
+            datasets: [{ data, backgroundColor: PIE_PALETTE.slice(0, labels.length),
+                         borderColor: '#111', borderWidth: 2, hoverOffset: 6 }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: true, animation: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: '#aaa', boxWidth: 12, font: { size: 11 }, padding: 10 } },
+                tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed.toFixed(1)}${unit}` } },
+            },
+        },
+    });
+
+    const cpu = makePieData('cpu_pct');
+    const mem = makePieData('mem_pct');
+
+    if (chartCpuPie) chartCpuPie.destroy();
+    if (chartMemPie) chartMemPie.destroy();
+    chartCpuPie = new Chart($('chart-cpu-pie'), pieCfg(cpu.labels, cpu.data, '%'));
+    chartMemPie = new Chart($('chart-mem-pie'), pieCfg(mem.labels, mem.data, '%'));
+}
+
+// ── Containers ────────────────────────────────────────────────────────────────
+function ctrSev(c) {
+    if (c.state === 'missing' || c.state === 'stopped') return 'crit';
+    if (c.health === 'unhealthy') return 'warn';
+    return 'ok';
+}
+function ctrStateLabel(c) {
+    if (c.state === 'missing') return 'missing';
+    if (c.state === 'stopped') return 'stopped';
+    if (c.health === 'unhealthy') return 'unhealthy';
+    if (c.health === 'starting') return 'starting';
+    return 'running';
+}
+
+function renderContainers(containers) {
+    const groups = {};
+    containers.forEach(c => {
+        if (!groups[c.category]) groups[c.category] = [];
+        groups[c.category].push(c);
+    });
+    $('ctr-categories').innerHTML = Object.entries(groups).map(([cat, ctrs]) => `
+        <div>
+          <div class="ctr-category-label">${cat}</div>
+          <div class="ctr-row">
+            ${ctrs.map(c => {
+                const sev = ctrSev(c);
+                const lbl = ctrStateLabel(c);
+                return `<div class="ctr-pill ${sev}" title="${c.raw_status || lbl}">
+                  <div class="ctr-dot ${sev}"></div>
+                  <span class="ctr-name">${c.label}</span>
+                  ${sev !== 'ok' ? `<span class="ctr-state">${lbl}</span>` : ''}
+                </div>`;
+            }).join('')}
+          </div>
+        </div>`
+    ).join('');
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+const CHART_CFG = {
+    type: 'line',
+    options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { color: '#888', boxWidth: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` } } },
+        scales: {
+            x: { type: 'time', ticks: { color: '#666', maxRotation: 0, font: { size: 10 } }, grid: { color: '#222' } },
+            y: { min: 0, max: 100, ticks: { color: '#666', callback: v => v + '%', font: { size: 10 } }, grid: { color: '#222' } },
+        },
+    },
+};
+
+let chartRes = null, chartDsk = null;
+
+function mkDataset(label, color, data) {
+    return { label, borderColor: color, backgroundColor: color + '22', borderWidth: 1.5,
+             pointRadius: 0, tension: 0.3, fill: false, data };
+}
+
+function buildCharts(rows) {
+    const ts    = rows.map(r => r.ts * 1000);
+    const cpu   = rows.map((r, i) => ({ x: ts[i], y: r.cpu_pct }));
+    const ram   = rows.map((r, i) => ({ x: ts[i], y: r.ram_pct }));
+    const swap  = rows.map((r, i) => ({ x: ts[i], y: r.swap_pct }));
+    const ddisk = rows.map((r, i) => ({ x: ts[i], y: r.docker_disk_pct }));
+    const ndisk = rows.map((r, i) => ({ x: ts[i], y: r.nas_disk_pct }));
+
+    const resCfg = JSON.parse(JSON.stringify(CHART_CFG));
+    resCfg.data  = { datasets: [mkDataset('CPU', '#ff6b35', cpu), mkDataset('RAM', '#30b0ff', ram), mkDataset('Swap', '#bf5af2', swap)] };
+    const dskCfg = JSON.parse(JSON.stringify(CHART_CFG));
+    dskCfg.data  = { datasets: [mkDataset('Docker disk', '#34c759', ddisk), mkDataset('NAS disk', '#ff9f0a', ndisk)] };
+
+    if (chartRes) chartRes.destroy();
+    if (chartDsk) chartDsk.destroy();
+    chartRes = new Chart($('chart-resources'), resCfg);
+    chartDsk = new Chart($('chart-disks'),     dskCfg);
+}
+
+function loadHistory(hours) {
+    fetch(`/api/infra/history?hours=${hours}`)
+        .then(r => r.json())
+        .then(rows => buildCharts(rows))
+        .catch(e => console.warn('History fetch failed', e));
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+let activeHours = 24;
+$('chart-tabs').addEventListener('click', e => {
+    const btn = e.target.closest('.chart-tab');
+    if (!btn) return;
+    document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeHours = parseInt(btn.dataset.hours, 10);
+    loadHistory(activeHours);
+});
+
+// ── Main polling loop ─────────────────────────────────────────────────────────
+function refresh() {
+    fetch('/api/infra/status')
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(snap => {
+            setBanner(snap.overall || 'unknown');
+            renderProblems(snap);
+            renderMetrics(snap);
+            renderContainers(snap.containers || []);
+            buildPies(snap.container_stats || []);
+            $('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+        })
+        .catch(() => setBanner('unknown'));
+}
+
+refresh();
+loadHistory(activeHours);
+setInterval(refresh, 15_000);
+setInterval(() => loadHistory(activeHours), 60_000);
+</script>
+</body>
+</html>
+

@@ -4,7 +4,7 @@ This is the main Immich instance running on the Docker host.
 
 ## Configuration
 
-- **Web URL**: http://100.123.154.40:2283
+- **Web URL**: http://100.69.184.113:2283
 - **Media Location**: `/mnt/boston/media/pictures`
 - **Database Location**: `/home/brandon/immich/postgres`
 - **Version**: v2.3.1

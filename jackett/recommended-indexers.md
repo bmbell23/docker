@@ -25,7 +25,7 @@
 
 ## Setup Instructions
 
-1. **Access Jackett:** http://100.123.154.40:9117
+1. **Access Jackett:** http://100.69.184.113:9117
 2. **Add Indexers:**
    - Click "Add indexer"
    - Search for indexer name

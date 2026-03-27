@@ -8,7 +8,7 @@ The error shows: `Exception (thepiratebay)` - this is the broken original indexe
 ## ✅ Solution: Switch to Fixed Version
 
 ### Step 1: Open Jackett Web UI
-Go to: **http://100.123.154.40:9117**
+Go to: **http://100.69.184.113:9117**
 
 ### Step 2: Remove the Broken Indexer
 1. Look for **"The Pirate Bay"** in your indexer list

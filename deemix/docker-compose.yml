@@ -1,0 +1,44 @@
+name: deemix
+
+services:
+  deemix:
+    container_name: deemix
+    image: ghcr.io/bambanah/deemix:latest
+    restart: unless-stopped
+
+    ports:
+      - "6595:6595"
+
+    environment:
+      - TZ=America/New_York
+      - DEEMIX_SERVER_PORT=6595
+      - DEEMIX_MUSIC_DIR=/downloads
+      - DEEMIX_DATA_DIR=/config
+      - DEEMIX_HOST=0.0.0.0
+      - DEEMIX_SINGLE_USER=true
+      - PUID=1000
+      - PGID=1000
+      - UMASK_SET=022
+
+    volumes:
+      # Music downloads go directly to your music directory
+      - /mnt/boston/media/music:/downloads
+      # Config/cache for deemix
+      - ./config:/config
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+

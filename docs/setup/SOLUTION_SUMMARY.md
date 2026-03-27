@@ -22,7 +22,7 @@
 **Root Cause**: Database has no users (Immich crashed during initial setup before creating admin user).
 
 **Solution**: 
-- Access http://100.123.154.40:2283 in your browser
+- Access http://100.69.184.113:2283 in your browser
 - Complete the initial setup wizard to create admin user
 - See `IMMICH_SETUP.md` for detailed instructions
 
@@ -113,7 +113,7 @@ Status "inactive (dead)" is normal - it only runs on boot.
 ## Next Steps
 
 ### 1. Set Up Immich (Required)
-1. Open http://100.123.154.40:2283 in your browser
+1. Open http://100.69.184.113:2283 in your browser
 2. Complete the initial setup wizard
 3. Create admin user with email: brandon@forge-freedom.com
 4. See `IMMICH_SETUP.md` for details

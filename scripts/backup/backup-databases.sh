@@ -47,11 +47,30 @@ else
     fi
 fi
 
+# Trilium Notes Backup (SQLite database)
+TRILIUM_DOCS_DIR="/mnt/boston/documents/trilium-backups"
+mkdir -p "$TRILIUM_DOCS_DIR"
+TRILIUM_DATA_DIR="/home/brandon/projects/docker/trilium/data"
+echo "Backing up Trilium database..."
+if [ -f "$TRILIUM_DATA_DIR/document.db" ]; then
+    cp "$TRILIUM_DATA_DIR/document.db" "$TRILIUM_DOCS_DIR/trilium_${DATE}.db"
+    gzip -f "$TRILIUM_DOCS_DIR/trilium_${DATE}.db"
+    if [ $? -eq 0 ]; then
+        echo "✓ Trilium backup successful"
+    else
+        echo "✗ Trilium backup failed"
+    fi
+else
+    echo "✗ Trilium database not found"
+fi
+
 # Clean up old backups (older than RETENTION_DAYS)
 echo "Cleaning up backups older than $RETENTION_DAYS days..."
 find "$BACKUP_DIR" -name "*.sql.gz" -mtime +$RETENTION_DAYS -delete
 find "$BACKUP_DIR" -name "*.db" -mtime +$RETENTION_DAYS -delete
+find "$TRILIUM_DOCS_DIR" -name "*.db.gz" -mtime +$RETENTION_DAYS -delete
 
 echo "Backup completed at $(date)"
 echo "Backups stored in: $BACKUP_DIR"
+echo "Trilium backups also in: $TRILIUM_DOCS_DIR"
 

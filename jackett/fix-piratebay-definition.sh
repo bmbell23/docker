@@ -29,7 +29,7 @@ sleep 10
 echo "✅ The Pirate Bay (Fixed) indexer should now be available!"
 echo
 echo "Next steps:"
-echo "1. Go to Jackett web UI: http://100.123.154.40:9117"
+echo "1. Go to Jackett web UI: http://100.69.184.113:9117"
 echo "2. Remove the old 'The Pirate Bay' indexer"
 echo "3. Add the new 'The Pirate Bay (Fixed)' indexer"
 echo "4. Test the new indexer"

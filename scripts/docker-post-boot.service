@@ -1,0 +1,19 @@
+[Unit]
+Description=Docker post-boot recovery (VPN containers, stale iptables cleanup, Tailscale routing)
+After=docker.service docker-iptables.service
+Requires=docker.service
+# Give Docker time to start all restart:unless-stopped containers
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Wait for Docker to finish restarting containers before we run
+ExecStartPre=/bin/sleep 45
+ExecStart=/home/brandon/projects/docker/scripts/docker-post-boot.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+

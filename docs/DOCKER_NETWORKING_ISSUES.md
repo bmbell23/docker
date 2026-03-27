@@ -59,7 +59,7 @@ sudo systemctl start fix-docker-iptables.service
 
 **Symptoms:**
 - Cannot access a container from outside (e.g., via Tailscale IP)
-- `curl http://100.123.154.40:PORT/` fails with "Could not connect to server"
+- `curl http://100.69.184.113:PORT/` fails with "Could not connect to server"
 - Container is accessible via `localhost:PORT` but not via external IP
 
 **Root Cause:**

@@ -90,13 +90,13 @@ sudo iptables -L DOCKER-ISOLATION-STAGE-1 -n
 From another machine or your browser:
 ```bash
 # Jellyfin
-curl -I http://100.123.154.40:8096
+curl -I http://100.69.184.113:8096
 
 # Immich
-curl -I http://100.123.154.40:2283
+curl -I http://100.69.184.113:2283
 
 # Romm
-curl -I http://100.123.154.40:8082
+curl -I http://100.69.184.113:8082
 ```
 
 ## Container IP and Port Reference

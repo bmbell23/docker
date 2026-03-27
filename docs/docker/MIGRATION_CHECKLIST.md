@@ -36,12 +36,12 @@
 
 ### Post-Migration Verification
 - [ ] **Check container count**: `docker ps | wc -l` should show ~28
-- [ ] **Test Jellyfin via Tailscale**: `curl -I http://100.123.154.40:8096`
+- [ ] **Test Jellyfin via Tailscale**: `curl -I http://100.69.184.113:8096`
 - [ ] **Test docker restart**: `docker restart jellyfin` (should work!)
 - [ ] **Test docker stop**: `docker stop jellyfin && docker start jellyfin`
 - [ ] **Test docker kill**: Works without permission denied
 - [ ] **Verify all services accessible**:
-  - [ ] Jellyfin (http://100.123.154.40:8096)
+  - [ ] Jellyfin (http://100.69.184.113:8096)
   - [ ] Immich (check your usual URL)
   - [ ] Outline (check your usual URL)
   - [ ] Other critical services

@@ -61,11 +61,8 @@ add_network_rules "br-63a5fc5a72cf"
 add_nat_rule "br-63a5fc5a72cf" 2283 "172.31.0.5" 2283
 add_filter_rule "br-63a5fc5a72cf" 2283
 
-# Dashboard (8001 -> 172.22.0.2)
-echo "→ Dashboard (port 8001)"
-add_network_rules "br-afa60917f2db"
-add_nat_rule "br-afa60917f2db" 8001 "172.22.0.2" 5000
-add_filter_rule "br-afa60917f2db" 5000
+# Dashboard uses network_mode: host — no DNAT needed
+echo "→ Dashboard (skipped — uses host networking)"
 
 # YT-DLP Web (8998 -> 172.29.0.2)
 echo "→ YT-DLP Web (port 8998)"

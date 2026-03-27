@@ -6,7 +6,7 @@
     ],
     "name": "docker",
     "settings": {
-        "workbench.colorTheme": "Default Dark+",
+        "workbench.colorTheme": "Dark+",
         "search.exclude": {
             "**/node_modules": true,
             "**/bower_components": true,

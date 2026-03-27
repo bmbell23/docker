@@ -1,0 +1,83 @@
+name: immich
+
+services:
+  immich:
+    image: ghcr.io/imagegenius/immich:latest
+    container_name: immich
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      # Database
+      - DB_HOSTNAME=immich-db
+      - DB_USERNAME=immich
+      - DB_PASSWORD=immich_db_pass
+      - DB_DATABASE_NAME=immich
+      # Redis (bundled inside this container via docker mod)
+      - REDIS_HOSTNAME=localhost
+      - DOCKER_MODS=imagegenius/mods:universal-redis
+      # Machine learning - 1 worker keeps RAM predictable
+      - MACHINE_LEARNING_WORKERS=1
+      - MACHINE_LEARNING_WORKER_TIMEOUT=120
+      # Throttle job concurrency so it doesn't peg all CPUs
+      - IMMICH_CONFIG_FILE=/config-file/immich.config.json
+    volumes:
+      # ML models + config (~1.5GB on first run as models download)
+      - immich-config:/config
+      # Photos uploaded directly via Immich app (stored on NAS)
+      - /mnt/boston/media/pictures/immich-storage:/photos
+      # Your existing photo library on the NAS (read-only)
+      - /mnt/boston/media/pictures/library:/libraries:ro
+      # Job concurrency config
+      - ./immich.config.json:/config-file/immich.config.json:ro
+    ports:
+      - "2283:8080"
+    depends_on:
+      - immich-db
+    restart: unless-stopped
+    # Prevent container from using any swap — if it OOMs, the container dies
+    # cleanly and restarts. Far better than swap grinding the whole server to a halt.
+    mem_swappiness: 0
+    memswap_limit: 4G
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
+  immich-db:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+    container_name: immich-db
+    environment:
+      POSTGRES_USER: immich
+      POSTGRES_PASSWORD: immich_db_pass
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+      # Tune postgres to stay within its memory budget
+      POSTGRES_EXTRA_FLAGS: >-
+        -c shared_buffers=256MB
+        -c effective_cache_size=768MB
+        -c work_mem=8MB
+        -c maintenance_work_mem=64MB
+        -c max_connections=20
+    volumes:
+      - immich-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    mem_swappiness: 0
+    memswap_limit: 1536M
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1.5G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+volumes:
+  immich-config:
+  immich-postgres:
+

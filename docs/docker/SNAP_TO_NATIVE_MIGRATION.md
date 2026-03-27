@@ -78,7 +78,7 @@ Migrate from Snap Docker to native Docker (docker.io package already installed).
    docker restart jellyfin
    
    # Verify Tailscale access
-   curl -I http://100.123.154.40:8096
+   curl -I http://100.69.184.113:8096
    ```
 
 ### Phase 3: Cleanup (After Successful Migration)
@@ -138,7 +138,7 @@ These services will be down during migration:
 After migration, verify:
 
 1. ✅ All containers running: `docker ps | wc -l` should show 28+ containers
-2. ✅ Jellyfin accessible via Tailscale: `curl -I http://100.123.154.40:8096`
+2. ✅ Jellyfin accessible via Tailscale: `curl -I http://100.69.184.113:8096`
 3. ✅ Docker restart works: `docker restart jellyfin` (no permission denied!)
 4. ✅ Docker stop works: `docker stop jellyfin` (no permission denied!)
 5. ✅ Docker kill works: `docker kill jellyfin` (no permission denied!)

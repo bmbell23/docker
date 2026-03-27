@@ -1,7 +1,7 @@
 # Immich Setup and Credentials Issue
 
 ## Current Status
-- **Service**: Running and accessible at http://100.123.154.40:2283
+- **Service**: Running and accessible at http://100.69.184.113:2283
 - **Database**: Connected and healthy
 - **Problem**: No users exist in the database
 
@@ -13,7 +13,7 @@ The Immich database has no user accounts. This happened because Immich was crash
 ### Step 1: Access Immich
 Open your browser and go to:
 - **Local**: http://192.168.0.158:2283
-- **Tailscale**: http://100.123.154.40:2283
+- **Tailscale**: http://100.69.184.113:2283
 
 ### Step 2: Initial Setup
 Since there are no users, Immich should show the "Getting Started" or "Welcome" page where you can create the first admin user.
@@ -122,13 +122,13 @@ Service definition: `immich-main/docker-compose.yml`
 1. **Upload photos**: Use the mobile app or web UI
 2. **Configure storage**: Set up external libraries if needed
 3. **Enable machine learning**: Face detection, object recognition (already running)
-4. **Mobile app**: Download from App Store/Play Store and connect to http://100.123.154.40:2283
+4. **Mobile app**: Download from App Store/Play Store and connect to http://100.69.184.113:2283
 
 ## Security Notes
 
 - Change the default password after first login
 - Consider enabling 2FA in settings
-- The service is accessible via Tailscale (100.123.154.40) - ensure your Tailscale network is secure
+- The service is accessible via Tailscale (100.69.184.113) - ensure your Tailscale network is secure
 - Local network access (192.168.0.158) is also available
 
 ## Related Documentation

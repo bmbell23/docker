@@ -11,6 +11,11 @@ beets/data/
 beets/config/
 romm/data/
 romm/config/
+calibre/config/library
+calibre/config/.config/
+calibre/config/.local/
+calibre/config/.cache/
+calibre/config/.dbus/
 calibre-web/data/
 calibre-web/config/
 immich-main/upload/

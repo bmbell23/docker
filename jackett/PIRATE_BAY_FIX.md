@@ -18,7 +18,7 @@ I've created a **fixed version** of The Pirate Bay indexer that removes the prob
 
 **You need to do this in the Jackett web UI:**
 
-1. **Open Jackett:** http://100.123.154.40:9117
+1. **Open Jackett:** http://100.69.184.113:9117
 
 2. **Remove the broken indexer:**
    - Find "The Pirate Bay" in your indexer list
