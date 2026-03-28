@@ -33,8 +33,8 @@ After creating the account, you should be able to log in immediately.
 If the web UI doesn't show the initial setup page, you can create a user via the CLI:
 
 ```bash
-# Enter the Immich server container
-docker exec -it immich_server /bin/bash
+# Enter the Immich container
+docker exec -it immich /bin/bash
 
 # Create admin user (replace with your details)
 immich user create \
@@ -52,7 +52,7 @@ exit
 Check the database to confirm the user was created:
 
 ```bash
-docker exec immich_postgres psql -U postgres -d immich -c 'SELECT email, name, "isAdmin" FROM "user";'
+docker exec immich-db psql -U immich -d immich -c 'SELECT email, name, "isAdmin" FROM "user";'
 ```
 
 Expected output:
@@ -87,7 +87,7 @@ Should return `HTTP/1.1 200 OK`.
 ### Database connection issues
 Check if the database is healthy:
 ```bash
-docker exec immich_postgres pg_isready -U postgres
+docker exec immich-db pg_isready -U immich
 ```
 
 Should return: `/var/run/postgresql:5432 - accepting connections`
@@ -95,7 +95,7 @@ Should return: `/var/run/postgresql:5432 - accepting connections`
 ### Container keeps restarting
 Check logs:
 ```bash
-docker logs immich_server --tail 50
+docker logs immich --tail 50
 ```
 
 If you see "CONNECT_TIMEOUT database:5432", the iptables rules may be missing. Run:

@@ -1,61 +1,79 @@
-# Docker Containers
+# Docker Infrastructure
 
-This repository contains Docker Compose configurations for various containers running on the Docker host.
+Docker Compose configurations for all self-hosted containers running on the home server (`100.69.184.113`).
 
-## Structure
+## Services
 
-### Services
-Each container/service has its own subdirectory:
+### 📸 Photos
+| Directory | Containers | Port | Description |
+|---|---|---|---|
+| `immich/` | `immich`, `immich-db` | `2283` | Photo management (imagegenius single-container + Postgres) |
 
-- `immich-main/` - Main Immich photo management instance
-- `audiobookshelf/` - Audiobook and podcast server
-- `beets/` - Music library manager
-- `calibre-web/` - Ebook library web interface
-- `dashboard/` - Custom dashboard application
-- `jackett/` - Torrent indexer proxy
-- `jellyfin/` - Media server
-- `kavita/` - Comic/manga reader
-- `navidrome/` - Music streaming server
-- `outline/` - Team wiki and knowledge base
-- `pi-hole/` - Network-wide ad blocker
-- `picard/` - Music tagger
-- `romm/` - ROM manager
-- `stash/` - Media organizer
-- `torrents/` - Torrent client with VPN
-- `youtube-downloader/` - YouTube download and organization tools
+### 🎬 Media
+| Directory | Containers | Port | Description |
+|---|---|---|---|
+| `jellyfin/` | `jellyfin` | `8096` / `8920` | Video streaming server |
+| `stash/` | `stash` | `9999` | Adult media organizer |
+| `audiobookshelf/` | `audiobookshelf` | `13378` | Audiobook & podcast server |
 
-### Documentation
-Documentation is organized in the `docs/` directory:
+### 📚 Books & Library
+| Directory | Containers | Port | Description |
+|---|---|---|---|
+| `calibre/` | `calibre` | `8083` / `8084` | Ebook library manager |
+| `deemix/` | `deemix` | `6595` | Music download client |
 
-- `docs/docker/` - Docker networking and configuration guides
-- `docs/reboot/` - System reboot procedures and checklists
-- `docs/setup/` - Setup and solution summaries
-- `docs/ai-guidelines/` - AI agent interaction guidelines
-- `docs/services/` - Service-specific documentation
+### 🎮 Gaming
+| Directory | Containers | Port | Description |
+|---|---|---|---|
+| `romm/` | `romm`, `romm-db` | `8080` | ROM manager + MariaDB |
 
-### Scripts
-Utility scripts are organized in the `scripts/` directory:
+### ⬇️ Downloads (VPN-protected)
+| Directory | Containers | Port | Description |
+|---|---|---|---|
+| `torrents/` | `mullvad-vpn`, `qbittorrent` | `2285` (WebUI), `6881` | WireGuard VPN + torrent client |
+| `jackett/` | `jackett`, `flaresolverr` | `9117` (via VPN) | Torrent indexer + Cloudflare bypass — **routes through `mullvad-vpn`** |
+| `youtube-downloader/` | `yt-dlp-web` | `8998` | yt-dlp web UI |
 
-- `scripts/backup/` - Backup automation scripts
-- `scripts/conversion/` - Media conversion utilities
-- `scripts/maintenance/` - System maintenance scripts
-- `scripts/` - General utility scripts
+### 🔧 Productivity
+| Directory | Containers | Port | Description |
+|---|---|---|---|
+| `trilium/` | `trilium` | `8085` | Personal knowledge base (TriliumNext) |
+
+## Network Architecture
+
+`jackett` and `flaresolverr` share the network namespace of the `mullvad-vpn` container (from `torrents/`). This means **`torrents/` must be started before `jackett/`**.
+
+```
+mullvad-vpn (torrents/)
+  ├── qbittorrent   — network_mode: service:vpn
+  ├── jackett       — network_mode: container:mullvad-vpn
+  └── flaresolverr  — network_mode: container:mullvad-vpn
+```
+
+## Startup Order
+
+1. `torrents/` — VPN must come first (other services share its network)
+2. Everything else in any order
+
+## Documentation
+
+- `docs/docker/` — Networking, iptables fixes, migration guides
+- `docs/reboot/` — Reboot procedures and checklists
+- `docs/setup/` — Setup summaries
+- `docs/services/` — Service-specific docs (Immich setup, etc.)
+- `scripts/` — Utility scripts (backup, maintenance, iptables fixes)
 
 ## Version Management
 
-This repo uses semantic versioning tracked in `version.txt`. Use the `gvc` function to commit with version bumps:
+Semantic versioning tracked in `version.txt`. Use the `gvc` function to commit with version bumps:
 
 ```bash
-# Auto-increment patch version
-gvc "your commit message"
-
-# Specify version manually
-gvc 1.2.0 "your commit message"
+gvc "your commit message"       # auto-increment patch
+gvc 1.2.0 "your commit message" # specify version
 ```
 
-## General Guidelines
+## Conventions
 
-- Each container should have its own directory
-- Include a `.env.template` file (never commit actual `.env` files with secrets)
-- Include a `README.md` documenting the specific container setup
+- Each service has its own directory with a `docker-compose.yml`
+- Never commit `.env` files — use `.env.template` as the committed reference
 - Use `.gitignore` to exclude data directories and secrets
