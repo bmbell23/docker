@@ -16,6 +16,7 @@ calibre/config/.config/
 calibre/config/.local/
 calibre/config/.cache/
 calibre/config/.dbus/
+calibre/processed_acsm.txt
 calibre-web/data/
 calibre-web/config/
 immich-main/upload/
