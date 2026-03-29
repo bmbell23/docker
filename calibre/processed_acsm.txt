@@ -68,3 +68,5 @@ Truckers_676350.acsm
 Wings_676355.acsm
 Diggers_676299.acsm
 Firefight_1816350.acsm
+MysticalPlaces_9781781319598_5783086.acsm
+Fantasy_11450031.acsm
