@@ -27,12 +27,12 @@ jellyfin/cache/
 kavita/data/
 navidrome/data/
 outline/data/
+trilium/data/
 stash/data/
 stash/generated/
 stash/metadata/
 stash/cache/
 stash/blobs/
-trilium/data/
 youtube-downloader/downloads/
 youtube-downloader/config/
 torrents/config/
