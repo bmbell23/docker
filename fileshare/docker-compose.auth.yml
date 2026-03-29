@@ -1,0 +1,11 @@
+services:
+  miniserve:
+    command:
+      - "--interfaces"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--no-symlinks"
+      - "--auth"
+      - ${MINISERVE_AUTH}
+      - "/share"

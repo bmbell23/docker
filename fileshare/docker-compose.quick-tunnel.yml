@@ -1,0 +1,7 @@
+services:
+  cloudflared:
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --url
+      - http://miniserve:8080

@@ -1,0 +1,31 @@
+name: fileshare
+
+services:
+  miniserve:
+    container_name: fileshare-miniserve
+    image: svenstaro/miniserve:latest
+    restart: "no"
+    command:
+      - "--interfaces"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+      - "--no-symlinks"
+      - "/share"
+    environment:
+      - MINISERVE_TITLE=${MINISERVE_TITLE}
+    volumes:
+      - ${SHARE_HOST_PATH}:${SHARE_CONTAINER_PATH}:ro
+
+  cloudflared:
+    container_name: fileshare-cloudflared
+    image: cloudflare/cloudflared:latest
+    restart: "no"
+    depends_on:
+      - miniserve
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CF_TUNNEL_TOKEN}
