@@ -16,16 +16,15 @@ services:
       - TZ=America/New_York
       - PASSWORD=calibre   # Change this — protects the VNC/web GUI
       - SECURE_CONNECTION=1  # Enables HTTPS (self-signed cert)
-      # Open the library on start. Content server auto-start is controlled by
+      # Open the local-disk library on start. Content server auto-start is controlled by
       # the autolaunch_server preference in calibre (set to true in gui.py.json).
       - CLI_ARGS=--with-library /config/library
 
     volumes:
-      # Calibre config AND library live here (local disk — avoids NFS rename issues)
+      # Calibre config and local metadata database live here.
       - ./config:/config
 
-      # NAS books — read-write so Calibre can save converted/de-DRM'd files
-      # Original library: /mnt/boston/media/books/
+      # Host-backed mirror/storage for book files.
       - /mnt/boston/media/books_calibre_docker:/nas-books
 
       # Drop downloaded ebooks here, then Add Books in Calibre pointing to /incoming

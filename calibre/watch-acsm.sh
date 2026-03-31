@@ -14,13 +14,34 @@ WATCH_DIR="/mnt/boston/media/downloads/books"
 PROCESSED_FILE="/home/brandon/projects/docker/calibre/processed_acsm.txt"
 LOG_FILE="/home/brandon/projects/docker/calibre/acsm-watcher.log"
 POLL_INTERVAL=30   # seconds between scans
+CALIBRE_COMPOSE_DIR="/home/brandon/projects/docker/calibre"
+CALIBRE_IMAGE="lscr.io/linuxserver/calibre:latest"
 
-# calibredb_gui: runs calibredb as the 'abc' user with DISPLAY=:1 so it
-# connects via IPC to the running Calibre GUI process. This means all adds
-# and metadata writes are processed by the GUI directly — the book list and
-# custom columns update in real time with no restart or manual refresh needed.
+# calibredb_gui: runs calibredb in a one-shot headless container while the
+# GUI container is briefly stopped. This avoids SQLite lock contention with
+# the running Calibre desktop process.
 calibredb_gui() {
-    docker exec -u abc -e DISPLAY=:1 calibre calibredb "$@"
+    local args_quoted=""
+    local arg
+    for arg in "$@"; do
+        args_quoted+=" $(printf '%q' "$arg")"
+    done
+
+    local rc=0
+    (
+        set -e
+        cd "$CALIBRE_COMPOSE_DIR"
+        docker compose stop calibre >/dev/null
+        docker run --rm --entrypoint /bin/bash -u 1000:1000 \
+            -v /home/brandon/projects/docker/calibre/config:/config \
+            -v /mnt/boston/media/downloads/books:/incoming \
+            -v /mnt/boston/media/books_calibre_docker:/nas-books \
+            "$CALIBRE_IMAGE" \
+            -lc "calibredb --with-library /config/library${args_quoted}"
+    )
+    rc=$?
+    (cd "$CALIBRE_COMPOSE_DIR" && docker compose up -d calibre >/dev/null)
+    return $rc
 }
 
 mkdir -p "$(dirname "$PROCESSED_FILE")"
@@ -28,6 +49,21 @@ touch "$PROCESSED_FILE"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+get_book_formats_json() {
+    local book_id="$1"
+    calibredb_gui list --for-machine --search "id:${book_id}" --fields formats 2>>"$LOG_FILE" | tr -d '\n'
+}
+
+is_raw_acsm_import() {
+    local formats_json="$1"
+
+    if echo "$formats_json" | grep -qi '\.acsm"' && ! echo "$formats_json" | grep -qiE '\.(epub|pdf)"'; then
+        return 0
+    fi
+
+    return 1
 }
 
 ensure_pages_column() {
@@ -77,6 +113,23 @@ process_acsm() {
             return 0
         fi
         log "ERROR: Could not extract book ID — import may have failed. Will retry next cycle."
+        return 1
+    fi
+
+    local formats_json
+    formats_json=$(get_book_formats_json "$book_id")
+
+    if is_raw_acsm_import "$formats_json"; then
+        log "WARNING: Book $book_id imported only as raw ACSM; DeACSM fulfillment did not complete."
+        calibredb_gui remove --permanent "$book_id" >> "$LOG_FILE" 2>&1 || true
+
+        if echo "$result" | grep -q "E_ADEPT_REQUEST_EXPIRED"; then
+            log "ACSM appears expired; removed raw import and marking as processed."
+            echo "$filename" >> "$PROCESSED_FILE"
+            return 0
+        fi
+
+        log "Removed raw ACSM import; leaving file unprocessed for retry next cycle."
         return 1
     fi
 
