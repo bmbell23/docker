@@ -30,6 +30,9 @@ kavita/data/
 navidrome/data/
 outline/data/
 trilium/data/
+vaultwarden/data/
+vaultwarden/backups/
+vaultwarden/.env
 stash/data/
 stash/generated/
 stash/metadata/

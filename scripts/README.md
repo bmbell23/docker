@@ -55,3 +55,22 @@ sudo systemctl status fix-docker-iptables.service
 sudo journalctl -u fix-docker-iptables.service
 ```
 
+## backup/vaultwarden-backup.sh
+
+**Purpose:** Creates timestamped backups of Vaultwarden data (`db.sqlite3`, attachments, config) and prunes old backups.
+
+**Usage:**
+```bash
+./scripts/backup/vaultwarden-backup.sh
+```
+
+**Backup location:**
+```text
+/home/brandon/projects/docker/vaultwarden/backups/
+```
+
+**Notes:**
+- Attempts a SQLite WAL checkpoint when supported by the container image.
+- Verifies archive integrity after creation.
+- Removes backups older than 30 days.
+

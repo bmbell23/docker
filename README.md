@@ -38,6 +38,7 @@ Docker Compose configurations for all self-hosted containers running on the home
 | Directory | Containers | Port | Description |
 |---|---|---|---|
 | `trilium/` | `trilium` | `8085` | Personal knowledge base (TriliumNext) |
+| `vaultwarden/` | `vaultwarden` | `8222` | Self-hosted password manager (Bitwarden-compatible) |
 
 ## Network Architecture
 
