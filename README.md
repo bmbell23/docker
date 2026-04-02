@@ -40,6 +40,11 @@ Docker Compose configurations for all self-hosted containers running on the home
 | `trilium/` | `trilium` | `8085` | Personal knowledge base (TriliumNext) |
 | `vaultwarden/` | `vaultwarden` | `8222` | Self-hosted password manager (Bitwarden-compatible) |
 
+### 🏗️ Infrastructure & CI/CD
+| Directory | Containers | Port | Description |
+|---|---|---|---|
+| `jenkins/` | `jenkins` | `8880` / `50000` | Jenkins automation server for CI/CD and scheduled ops jobs |
+
 ## Network Architecture
 
 `jackett` and `flaresolverr` share the network namespace of the `mullvad-vpn` container (from `torrents/`). This means **`torrents/` must be started before `jackett/`**.
