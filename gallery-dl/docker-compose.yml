@@ -1,0 +1,32 @@
+name: gallery-dl
+
+services:
+  gallery-dl:
+    container_name: gallery-dl
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      # Adult content destination
+      - /mnt/boston/media/other/Pictures:/pictures
+      # Non-adult images destination
+      - /mnt/boston/media/pictures/library/images:/library-images
+      # Optional config file for cookies, rate limits, etc.
+      - ${CONFIG_LOCATION}:/root/.config/gallery-dl
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 64M

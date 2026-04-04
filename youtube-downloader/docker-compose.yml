@@ -22,6 +22,20 @@ services:
       - ${DATA_LOCATION}:/app/data
       # Config file for default settings
       - ./config.yml:/config/config.yml:ro
+      # Stash video library for direct downloads
+      - /mnt/boston/media/other/Videos/Full:/stash-videos
+      # Short-form adult content (RedGIFs, clips, etc.)
+      - /mnt/boston/media/other/Videos/Short:/stash-shorts
+      # Non-adult video library
+      - /mnt/boston/media/videos:/media-videos
+      # Kids video library
+      - /mnt/boston/media/kid-media/Videos:/kid-videos
+      # Music / audio-only downloads
+      - /mnt/boston/media/music:/music
+      # Kids podcasts
+      - /mnt/boston/media/kid-media/Podcasts:/kid-podcasts
+      # YouTube cookies for age-restricted downloads (export from browser via cookies.txt extension)
+      - ./cookies.txt:/cookies/youtube.txt:ro
 
     logging:
       driver: "json-file"

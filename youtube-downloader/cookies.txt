@@ -1,0 +1,2 @@
+# Netscape HTTP Cookie File
+# Export from browser using 'Get cookies.txt LOCALLY' extension while logged into YouTube
