@@ -20,8 +20,10 @@ ytdlp_options:
   # Output template - organize files by type
   output: "/downloads/%(title)s.%(ext)s"
 
-  # Format selection - best quality video+audio or best audio
-  format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+  # Format selection - prefer H.264/AAC for max client compatibility (e.g. Jellyfin on Android).
+  # YouTube also serves AV1 in mp4 containers, which many clients can't play, so we explicitly
+  # prefer avc1 (H.264) first and only fall back to "any mp4" if H.264 isn't available.
+  format: "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 
   # Merge output format
   merge_output_format: "mp4"
@@ -53,8 +55,11 @@ ytdlp_options:
   # No overwrites
   no_overwrites: true
 
-  # Continue partially downloaded files
-  continue_dl: true
+  # Don't attempt to resume partial downloads (avoids HTTP 416 errors)
+  continue_dl: false
+
+  # Don't use .part files (write directly, avoids stale partial file issues)
+  no_part: true
 
 # Preset configurations for different download types
 presets:
@@ -69,6 +74,9 @@ presets:
       audio_quality: "0"  # Best quality
       embed_thumbnail: true
       add_metadata: true
+      # Only grab the single video, never an attached playlist/radio mix
+      # (e.g. URLs with &list=RD...&start_radio=1, which are endless).
+      no_playlist: true
       output: "/downloads/music/%(title)s.%(ext)s"
       postprocessor_args:
         - "-ar"
@@ -77,9 +85,9 @@ presets:
   # Full Video preset - for video downloads
   video:
     name: "Full Video (Best Quality)"
-    description: "Download full video in best quality MP4"
+    description: "Download full video in best quality MP4 (H.264 preferred)"
     options:
-      format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+      format: "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
       merge_output_format: "mp4"
       embed_thumbnail: false
       add_metadata: true
@@ -96,5 +104,7 @@ presets:
       audio_quality: "0"
       embed_thumbnail: true
       add_metadata: true
+      # Only grab the single video, never an attached playlist/radio mix.
+      no_playlist: true
       output: "/downloads/music/%(title)s.%(ext)s"
 

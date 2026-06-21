@@ -12,8 +12,12 @@ services:
       - /mnt/boston/media/other/Pictures:/pictures
       # Non-adult images destination
       - /mnt/boston/media/pictures/library/images:/library-images
-      # Optional config file for cookies, rate limits, etc.
+      # User config dir (cookies, per-site overrides, custom config files)
       - ${CONFIG_LOCATION}:/root/.config/gallery-dl
+      # Default config (logging, archive db, rate limits) - overlays the dir mount above
+      - ./config.json:/root/.config/gallery-dl/config.json:ro
+      # Persistent logs + download-archive db
+      - ./logs:/var/log/gallery-dl
 
     logging:
       driver: "json-file"

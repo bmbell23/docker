@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Convenience wrapper for the gallery-dl container.
+#
+# Usage:
+#   ./gdl <url> [<url>...]                # download into /pictures (default)
+#   ./gdl -d /library-images <url>        # download into /library-images
+#   ./gdl --help                          # show gallery-dl's own help
+#   ./gdl --logs                          # tail the persistent log file
+#
+# All gallery-dl flags are forwarded as-is. Logs are written to
+# ./logs/gallery-dl.log inside this directory.
+
+set -euo pipefail
+
+CONTAINER=gallery-dl
+LOG_FILE="$(cd "$(dirname "$0")" && pwd)/logs/gallery-dl.log"
+
+if [[ "${1:-}" == "--logs" ]]; then
+    exec tail -F "$LOG_FILE"
+fi
+
+if [[ $# -eq 0 ]]; then
+    echo "usage: $0 [gallery-dl args] <url> [<url>...]" >&2
+    echo "       $0 --logs        # tail $LOG_FILE" >&2
+    exit 2
+fi
+
+# Ensure the container is up before exec'ing into it.
+if ! sudo docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+    echo "error: container '$CONTAINER' is not running" >&2
+    echo "       try: cd $(dirname "$0") && sudo docker compose up -d" >&2
+    exit 1
+fi
+
+# Run gallery-dl inside the container. The container's config.json already
+# enables logging to /var/log/gallery-dl/gallery-dl.log, which is bind-mounted
+# to ./logs/ on the host.
+sudo docker exec "$CONTAINER" gallery-dl "$@"

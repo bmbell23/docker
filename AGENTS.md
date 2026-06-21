@@ -12,13 +12,12 @@
 
 ### ✅ Restarting Services
 
-**`docker restart` and `docker-compose restart` FAIL on this server.**
-
 ```bash
-PID=$(docker inspect <container_name> --format '{{.State.Pid}}')
-kill $PID
 cd /home/brandon/projects/docker
-docker-compose up -d
+docker compose restart <service>
+
+# Or to rebuild and redeploy:
+docker compose up -d --build
 ```
 
 ### iptables: Stale DNAT Rules After Container Redeploy

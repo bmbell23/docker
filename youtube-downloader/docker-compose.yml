@@ -3,10 +3,28 @@ name: youtube-downloader
 services:
   yt-dlp-web:
     container_name: yt-dlp-web
-    image: marcobaobao/yt-dlp-webui:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: yt-dlp-web:local
     restart: unless-stopped
     ports:
       - "8998:3033"
+    # Override image ENTRYPOINT to enable file logging (-fl) to a host-mounted path.
+    # entrypoint: [] is required because the image's ENTRYPOINT already invokes the
+    # binary; without clearing it, `command:` would be appended as extra args and
+    # Go's flag parser would silently drop our `-fl -lf` flags.
+    entrypoint: ["./yt-dlp-webui"]
+    command:
+      - --out
+      - /downloads
+      - --conf
+      - /config/config.yml
+      - --db
+      - /config/local.db
+      - -fl
+      - -lf
+      - /config/yt-dlp-webui.log
     environment:
       # Download settings
       DOWNLOAD_PATH: /downloads
@@ -18,9 +36,9 @@ services:
     volumes:
       # Downloads go here
       - ${DOWNLOAD_LOCATION}:/downloads
-      # Config/database
-      - ${DATA_LOCATION}:/app/data
-      # Config file for default settings
+      # Persistent state: SQLite DB + file log live here (binary writes to /config)
+      - ${DATA_LOCATION}:/config
+      # Config file for default settings (overlays the bind mount above)
       - ./config.yml:/config/config.yml:ro
       # Stash video library for direct downloads
       - /mnt/boston/media/other/Videos/Full:/stash-videos
@@ -36,6 +54,8 @@ services:
       - /mnt/boston/media/kid-media/Podcasts:/kid-podcasts
       # YouTube cookies for age-restricted downloads (export from browser via cookies.txt extension)
       - ./cookies.txt:/cookies/youtube.txt:ro
+      # yt-dlp system config (JS runtime, remote components)
+      - ./yt-dlp.conf:/etc/yt-dlp.conf:ro
 
     logging:
       driver: "json-file"

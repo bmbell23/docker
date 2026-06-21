@@ -1,0 +1,41 @@
+{
+    "extractor": {
+        "base-directory": "/pictures",
+        "archive": "/var/log/gallery-dl/archive.sqlite3",
+        "skip": true,
+        "sleep-request": [1.0, 2.0],
+        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "reddit": {
+            "client-id": null,
+            "user-agent": "Python:gallery-dl:1.0 (by /u/gallery-dl)"
+        }
+    },
+    "downloader": {
+        "rate": null,
+        "retries": 4,
+        "timeout": 30.0,
+        "part": true
+    },
+    "output": {
+        "mode": "auto",
+        "progress": true,
+        "shorten": true,
+        "log": {
+            "level": "info",
+            "format": "[{name}][{levelname}] {message}"
+        },
+        "logfile": {
+            "path": "/var/log/gallery-dl/gallery-dl.log",
+            "mode": "a",
+            "level": "info",
+            "format": "{asctime} [{name}][{levelname}] {message}",
+            "format-date": "%Y-%m-%d %H:%M:%S"
+        },
+        "unsupportedfile": {
+            "path": "/var/log/gallery-dl/unsupported.txt",
+            "mode": "a",
+            "format": "{asctime} {message}",
+            "format-date": "%Y-%m-%d %H:%M:%S"
+        }
+    }
+}
