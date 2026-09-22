@@ -53,7 +53,8 @@ services:
       # Kids podcasts
       - /mnt/boston/media/kid-media/Podcasts:/kid-podcasts
       # YouTube cookies for age-restricted downloads (export from browser via cookies.txt extension)
-      - ./cookies.txt:/cookies/youtube.txt:ro
+      # Writable: yt-dlp saves rotated cookies back on every run (ro mount breaks all downloads)
+      - ./cookies.txt:/cookies/youtube.txt
       # yt-dlp system config (JS runtime, remote components)
       - ./yt-dlp.conf:/etc/yt-dlp.conf:ro
 
