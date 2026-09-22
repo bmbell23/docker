@@ -39,6 +39,8 @@ torrents2/downloads/
 trilium/data/
 pi-hole/etc-pihole/
 pi-hole/etc-dnsmasq.d/
+pihole/data/
+pihole/.env
 vaultwarden/data/
 vaultwarden/backups/
 vaultwarden/.env
@@ -84,6 +86,11 @@ Thumbs.db
 
 # VPN configuration files (contain private keys)
 *.conf
+*.conf.bak*
 !**/example.conf
 !**/template.conf
+
+# Timestamped backup files
+*.bak-*
+*.bak.*
 

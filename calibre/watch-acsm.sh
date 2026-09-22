@@ -89,49 +89,11 @@ refresh_calibre() {
     fi
 }
 
-process_acsm() {
-    local acsm_file="$1"
-    local filename
-    filename=$(basename "$acsm_file")
-
-    log "New ACSM detected: $filename"
-    log "Adding to Calibre library (fulfilling via deACSM + decrypting via DeDRM)..."
-
-    # Add via GUI-connected calibredb so the GUI sees the new book immediately
-    local result
-    result=$(calibredb_gui add "/incoming/$filename" 2>&1)
-    log "$result"
-
-    # Extract the new book ID from "Added book ids: XXXX"
-    local book_id
-    book_id=$(echo "$result" | grep -oP 'Added book ids: \K[0-9]+')
-
-    if [ -z "$book_id" ]; then
-        if echo "$result" | grep -q "already exist in the database"; then
-            log "Book already exists in library — marking as processed."
-            echo "$filename" >> "$PROCESSED_FILE"
-            return 0
-        fi
-        log "ERROR: Could not extract book ID — import may have failed. Will retry next cycle."
-        return 1
-    fi
-
-    local formats_json
-    formats_json=$(get_book_formats_json "$book_id")
-
-    if is_raw_acsm_import "$formats_json"; then
-        log "WARNING: Book $book_id imported only as raw ACSM; DeACSM fulfillment did not complete."
-        calibredb_gui remove --permanent "$book_id" >> "$LOG_FILE" 2>&1 || true
-
-        if echo "$result" | grep -q "E_ADEPT_REQUEST_EXPIRED"; then
-            log "ACSM appears expired; removed raw import and marking as processed."
-            echo "$filename" >> "$PROCESSED_FILE"
-            return 0
-        fi
-
-        log "Removed raw ACSM import; leaving file unprocessed for retry next cycle."
-        return 1
-    fi
+# Shared post-add pipeline for any imported book (ACSM-fulfilled or raw EPUB):
+# page/word count -> metadata (series/pubdate) -> GUI refresh -> mark processed.
+finalize_book() {
+    local book_id="$1"
+    local filename="$2"
 
     log "Book added with ID: $book_id"
     log "Running Count Pages on book $book_id..."
@@ -203,6 +165,87 @@ process_acsm() {
     return 0
 }
 
+# Import a raw .epub dropped in the watch dir. Unlike ACSM there's no Adobe
+# fulfillment step — the epub IS the book — so add it directly, then run the
+# shared post-add pipeline. DeDRM still auto-runs on add for any DRM'd epub.
+# Duplicate titles/authors already in the library are skipped by calibredb.
+process_epub() {
+    local epub_file="$1"
+    local filename
+    filename=$(basename "$epub_file")
+
+    log "New EPUB detected: $filename"
+    log "Adding to Calibre library..."
+
+    local result
+    result=$(calibredb_gui add "/incoming/$filename" 2>&1)
+    log "$result"
+
+    local book_id
+    book_id=$(echo "$result" | grep -oP 'Added book ids: \K[0-9]+')
+
+    if [ -z "$book_id" ]; then
+        if echo "$result" | grep -q "already exist in the database"; then
+            log "Book already exists in library — marking as processed."
+            echo "$filename" >> "$PROCESSED_FILE"
+            return 0
+        fi
+        log "ERROR: Could not extract book ID for $filename — will retry next cycle."
+        return 1
+    fi
+
+    finalize_book "$book_id" "$filename"
+    return $?
+}
+
+process_acsm() {
+    local acsm_file="$1"
+    local filename
+    filename=$(basename "$acsm_file")
+
+    log "New ACSM detected: $filename"
+    log "Adding to Calibre library (fulfilling via deACSM + decrypting via DeDRM)..."
+
+    # Add via GUI-connected calibredb so the GUI sees the new book immediately
+    local result
+    result=$(calibredb_gui add "/incoming/$filename" 2>&1)
+    log "$result"
+
+    # Extract the new book ID from "Added book ids: XXXX"
+    local book_id
+    book_id=$(echo "$result" | grep -oP 'Added book ids: \K[0-9]+')
+
+    if [ -z "$book_id" ]; then
+        if echo "$result" | grep -q "already exist in the database"; then
+            log "Book already exists in library — marking as processed."
+            echo "$filename" >> "$PROCESSED_FILE"
+            return 0
+        fi
+        log "ERROR: Could not extract book ID — import may have failed. Will retry next cycle."
+        return 1
+    fi
+
+    local formats_json
+    formats_json=$(get_book_formats_json "$book_id")
+
+    if is_raw_acsm_import "$formats_json"; then
+        log "WARNING: Book $book_id imported only as raw ACSM; DeACSM fulfillment did not complete."
+        calibredb_gui remove --permanent "$book_id" >> "$LOG_FILE" 2>&1 || true
+
+        if echo "$result" | grep -q "E_ADEPT_REQUEST_EXPIRED"; then
+            log "ACSM appears expired; removed raw import and marking as processed."
+            echo "$filename" >> "$PROCESSED_FILE"
+            return 0
+        fi
+
+        log "Removed raw ACSM import; leaving file unprocessed for retry next cycle."
+        return 1
+    fi
+
+    finalize_book "$book_id" "$filename"
+    return $?
+}
+
 # ---- Main loop ---------------------------------------------------------------
 
 log "=========================================="
@@ -225,6 +268,18 @@ while true; do
         fi
 
         process_acsm "$acsm_file"
+    done
+
+    # Raw .epub drops (no Adobe fulfillment needed) — same post-add pipeline.
+    for epub_file in "$WATCH_DIR"/*.epub; do
+        filename=$(basename "$epub_file")
+
+        # Skip if already processed
+        if grep -qF "$filename" "$PROCESSED_FILE"; then
+            continue
+        fi
+
+        process_epub "$epub_file"
     done
     shopt -u nullglob
 
