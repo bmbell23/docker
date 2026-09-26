@@ -1,0 +1,11 @@
+# Ask Audiobookshelf to rescan its library. Pure HTTP, so it runs inside the
+# Dagu container with no host access -- useful as the canary that proves the
+# scheduler, its history and its captured logs all work.
+name: abs-library-scan
+description: Nightly Audiobookshelf library scan
+schedule: "0 5 * * *"
+steps:
+  - name: scan
+    command: |
+      curl -s -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" \
+        http://100.69.184.113:13378/healthcheck

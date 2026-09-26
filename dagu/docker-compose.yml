@@ -1,0 +1,29 @@
+services:
+  dagu:
+    image: ghcr.io/dagucloud/dagu:latest
+    container_name: dagu
+    restart: unless-stopped
+    environment:
+      - DAGU_HOST=0.0.0.0
+      - DAGU_PORT=8014
+      - DAGU_TZ=America/Denver
+      - DAGU_HOME=/var/lib/dagu
+      - PUID=1000
+      - PGID=1000
+    ports:
+      - '8014:8014'
+    volumes:
+      # Job definitions live in git next to this compose file; data (run history,
+      # captured logs) does not.
+      - ./dags:/var/lib/dagu/dags
+      - ./data:/var/lib/dagu/data
+      - ./logs:/var/lib/dagu/logs
+      # The jobs themselves are scripts in the project repos, run on the host's
+      # own paths, so the container sees them where cron sees them.
+      - /home/brandon/projects:/home/brandon/projects
+      - /mnt/boston/media:/mnt/boston/media
+      - /etc/localtime:/etc/localtime:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512M
