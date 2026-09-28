@@ -1,0 +1,15 @@
+# Chess nightly chess.com sync (Chess#28, docker#8): carl, then every tracked
+# player, then carl's rivals, one at a time. Replaces the in-app APScheduler job
+# (ENABLE_SCHEDULERS=false in Chess compose). The script is HTTP calls into
+# chess_app; red means at least one player failed or the targets list 404'd.
+# Not in the heavy queue: the work is network-bound and inside chess_app, and a
+# first-time rival (whole game history) could otherwise hold the queue for hours.
+name: chess-nightly-sync
+description: Sync carl, tracked players and rivals from chess.com
+schedule: "0 3 * * *"
+max_active_runs: 1
+# A brand-new rival pulls their whole history (girlimoni alone is 1,579 games).
+timeout_sec: 14400
+steps:
+  - name: sync players
+    command: ssh dockerhost '~/projects/Chess/scripts/nightly-sync.sh'
