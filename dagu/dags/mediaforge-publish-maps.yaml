@@ -16,3 +16,10 @@ steps:
     command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/audiobook sync-map --all'
     depends:
       - verify installed chapters
+
+  # One status line per audiobook, for GreatReads' "chapters are wrong" badge
+  # (GR #303). Runs last so it reflects this run's verification.
+  - name: publish status
+    command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/audiobook status'
+    depends:
+      - publish maps

@@ -1,11 +1,18 @@
-# The nightly backups. They all fired at 02:00 in cron, competing for the
-# same disk; here they run in sequence so one finishes before the next starts.
-# Immich is not here: it dumps its own database nightly into
-# /mnt/boston/media/pictures/immich-storage/backups/.
+# Nightly backups, in sequence. In cron these were three lines all firing at
+# 02:00 against the same disk.
+#
+# The database step's cron line pointed at ~/projects/docker/backup-databases.sh,
+# which was moved into scripts/backup/ at some point. Cron had been logging
+# "not found" 251 times and the last real backup was 2026-01-19 -- eight months
+# of nightly failures nobody saw, which is the whole argument for this move.
+#
+# Immich is deliberately NOT here: it writes its own nightly dumps to
+# /mnt/boston/media/pictures/immich-storage/backups/ (current as of today). The
+# old immich-daily-backup.sh cron pointed at a script that no longer exists and
+# was redundant with that.
 name: server-backups
-description: Databases (RomM, Jellyfin, Trilium) and GreatReads - nightly, in sequence
+description: Databases then GreatReads - nightly, in sequence
 schedule: "0 2 * * *"
-queue: heavy
 max_active_runs: 1
 steps:
   - name: databases
