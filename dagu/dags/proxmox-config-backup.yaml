@@ -1,0 +1,17 @@
+# Nightly archive of the Proxmox host's config (/etc/pve, network, fstab, udev)
+# to boston/proxmox-config-backups (docker#12, agent-bus thread 008).
+# From cron it failed 183 of 185 nights on /etc/pve/priv without anyone seeing;
+# the script fix is Dottie's (dotfiles/scripts). Red here until that lands.
+# Replaces (Proxmox crontab): 0 2 * * * ~/projects/dotfiles/scripts/proxmox-config-backup.sh
+name: proxmox-config-backup
+description: Archive the Proxmox host's configuration nightly
+schedule: "0 2 * * *"
+max_active_runs: 1
+steps:
+  - name: archive config
+    command: ssh proxmox '~/projects/dotfiles/scripts/proxmox-config-backup.sh'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"

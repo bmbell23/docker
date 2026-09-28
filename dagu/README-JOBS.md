@@ -17,6 +17,13 @@ bridge in `authorized_keys` and is gitignored; this repo is public.
 | `codeforge-notes-sync` | `* * * * *` | cron | ran every minute, invisibly |
 | `stash-identify` | `03:00` | cron | |
 | `abs-library-scan` | `05:00` | — | pure HTTP, the canary that needs no host access |
+| `proxmox-backup-rsync` | hourly | Proxmox cron `backup-script.sh` | runs on **Proxmox** (`ssh proxmox`); boston → `/mnt/backups` SSD |
+| `proxmox-config-backup` | `02:00` | Proxmox cron `proxmox-config-backup.sh` | runs on **Proxmox**; `/etc/pve` etc. → boston |
+
+## Alerts
+Backup DAGs carry a `handler_on` that runs `scripts/dagu-alert.sh` on the host. It
+posts to #infra (as Dakota, via agent-bus `bin/say`) when a job **turns** red and when it
+turns green again, not on every red run. State lives in `~/.local/state/dagu-alerts/`.
 
 ## Still in crontab, deliberately
 `immich/watchdog.sh` (every 5 min) is **known broken** — it cannot write
