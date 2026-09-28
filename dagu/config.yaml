@@ -1,0 +1,11 @@
+# Dagu server config, mounted at /var/lib/dagu/config.yaml. Read at startup only:
+# changes need a container recreate.
+#
+# "heavy": long CPU/disk jobs run one at a time. A DAG joins with `queue: heavy`.
+# The queue must be defined here: with an undefined queue name, scheduled runs
+# ignore the queue and start immediately (tested on 2.17.2, docker#4).
+queues:
+  enabled: true
+  config:
+    - name: heavy
+      max_concurrency: 1

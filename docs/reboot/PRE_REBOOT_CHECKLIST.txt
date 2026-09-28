@@ -61,7 +61,6 @@ AFTER REBOOT:
       
       Jellyfin:       http://YOUR_SERVER_IP:8096
       Romm:           http://YOUR_SERVER_IP:8080
-      Outline:        http://YOUR_SERVER_IP:8000
       Audiobookshelf: http://YOUR_SERVER_IP:13378
 
 

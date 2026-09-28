@@ -115,9 +115,6 @@ echo ""
 # Immich network
 fix_network_rules "immich_default"
 
-# Outline network
-fix_network_rules "outline_outline_network"
-
 # Jellyfin network (if it exists)
 fix_network_rules "jellyfin_default"
 

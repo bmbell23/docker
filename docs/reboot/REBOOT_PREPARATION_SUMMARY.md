@@ -7,7 +7,6 @@ All Docker services are configured to automatically restart after reboot:
 - **Immich**: `restart: always` ✅
 - **Jellyfin**: `restart: unless-stopped` ✅
 - **Romm**: `restart: unless-stopped` ✅
-- **Outline**: `restart: unless-stopped` ✅
 - **Audiobookshelf**: `restart: unless-stopped` ✅
 - **Kavita**: `restart: unless-stopped` ✅
 - **Navidrome**: `restart: unless-stopped` ✅
@@ -20,7 +19,6 @@ All critical data is properly persisted to host volumes:
 - **Immich Photos**: `/mnt/boston/media/pictures` ✅
 - **Jellyfin Config**: `/home/brandon/jellyfin/config` ✅
 - **Romm Database**: Docker volume `romm_romm-db-data` ✅
-- **Outline Data**: `/home/brandon/projects/docker/outline/data` ✅
 - All other services have proper volume mounts ✅
 
 ### 3. Created Backup Scripts
@@ -104,12 +102,7 @@ cd /home/brandon/projects/docker
    - 238MB of photo metadata
    - Now has daily backups + safe shutdown
 
-2. **Outline** (wiki/documentation)
-   - PostgreSQL database
-   - MinIO object storage
-   - Redis cache
-
-3. **Romm** (game library)
+2. **Romm** (game library)
    - MariaDB database
    - Game metadata and covers
 
@@ -126,7 +119,7 @@ cd /home/brandon/projects/docker
 - **Location**: `/home/brandon/backups/pre-reboot-YYYYMMDD-HHMMSS/`
 
 ### Backup Contents:
-- ✅ PostgreSQL databases (Immich, Outline)
+- ✅ PostgreSQL databases (Immich)
 - ✅ MariaDB databases (Romm)
 - ✅ Service configurations
 - ✅ Container states

@@ -116,7 +116,6 @@ COMPOSE_DIRS=(
     "jellyfin"
     "kavita"
     "navidrome"
-    "outline"
     "picard"
     "romm"
     "stash"

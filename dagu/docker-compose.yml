@@ -19,6 +19,7 @@ services:
       # captured logs) does not.
       - ./dags:/var/lib/dagu/dags
       - ./data:/var/lib/dagu/data
+      - ./config.yaml:/var/lib/dagu/config.yaml:ro
       - ./logs:/var/lib/dagu/logs
       # The jobs themselves are scripts in the project repos, run on the host's
       # own paths, so the container sees them where cron sees them.

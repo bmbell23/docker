@@ -30,7 +30,6 @@ sudo systemctl start fix-docker-iptables.service
 - Adds missing DOCKER inter-container communication rules
 - Checks for the following networks:
   - `immich_default` (Immich)
-  - `outline_outline_network` (Outline)
   - `jellyfin_default` (Jellyfin)
 
 **See also:** [../docs/DOCKER_NETWORKING_ISSUES.md](../docs/DOCKER_NETWORKING_ISSUES.md)

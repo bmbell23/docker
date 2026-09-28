@@ -5,11 +5,12 @@
 name: mediaforge-publish-maps
 description: Refresh sync maps + verify installed chapters against the audio
 schedule: "17 4 * * *"
-maxActiveRuns: 1
+queue: heavy
+max_active_runs: 1
 steps:
   - name: verify installed chapters
     command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/audiobook verify --all'
-    continueOn:
+    continue_on:
       failure: true
   - name: publish maps
     command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/audiobook sync-map --all'

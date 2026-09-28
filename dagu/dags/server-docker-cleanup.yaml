@@ -5,11 +5,11 @@
 name: server-docker-cleanup
 description: Reclaim docker space - images only, never volumes
 schedule: "0 6 * * *"
-maxActiveRuns: 1
+max_active_runs: 1
 steps:
   - name: routine cleanup
     command: ssh dockerhost '~/projects/docker/scripts/docker-cleanup.sh'
-    continueOn:
+    continue_on:
       failure: true
   - name: weekly image prune
     command: ssh dockerhost 'test $(date +\%u) -eq 7 && docker image prune -a -f --filter until=168h || echo "not sunday, skipping"'

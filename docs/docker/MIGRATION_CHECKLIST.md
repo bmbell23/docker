@@ -43,7 +43,6 @@
 - [ ] **Verify all services accessible**:
   - [ ] Jellyfin (http://100.69.184.113:8096)
   - [ ] Immich (check your usual URL)
-  - [ ] Outline (check your usual URL)
   - [ ] Other critical services
 - [ ] **Check iptables rules**: `sudo iptables -t nat -L DOCKER -n -v | grep 8096`
 - [ ] **Review migration log**: `cat /home/brandon/docker-migration-backup/migration_*.log`

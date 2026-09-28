@@ -1,0 +1,13 @@
+# Give ebooks with an unusable table of contents (< 3 entries) a real one,
+# recovered from the spine or pdftohtml page-split rips. Ran once across the
+# library by hand; new broken EPUBs were never repaired. Originals are copied to
+# /mnt/boston/media/temp/ebook-backups first. Books already repaired are skipped.
+# Runs before mediaforge-publish-maps (04:17) so maps see the repaired TOC.
+name: mediaforge-epub-repair
+description: Repair ebooks whose table of contents is unusable
+schedule: "55 3 * * *"
+queue: heavy
+max_active_runs: 1
+steps:
+  - name: repair ebooks
+    command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/audiobook repair-ebook --all'

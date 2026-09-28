@@ -4,7 +4,8 @@
 name: mediaforge-chapter-worker
 description: Fix one audiobook's chapters (silence detection)
 schedule: "*/10 * * * *"
-maxActiveRuns: 1
+queue: heavy
+max_active_runs: 1
 steps:
   - name: fix one book
     command: ssh dockerhost '~/projects/MediaForge/bin/worker-cron'

@@ -50,7 +50,6 @@ log "Step 3: Backing up critical configuration directories..."
 # Backup important config directories (not full volumes, just configs)
 CRITICAL_CONFIGS=(
     "jellyfin"
-    "outline"
     "immich-main"
     "audiobookshelf"
     "kavita"

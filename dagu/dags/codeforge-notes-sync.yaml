@@ -4,7 +4,7 @@
 name: codeforge-notes-sync
 description: CodeForge notes autosync
 schedule: "* * * * *"
-maxActiveRuns: 1
+max_active_runs: 1
 steps:
   - name: sync
     command: ssh dockerhost '~/projects/CodeForge/scripts/notes-autosync.sh'

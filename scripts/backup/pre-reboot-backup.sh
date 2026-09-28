@@ -91,44 +91,38 @@ log "=== IMMICH BACKUP ==="
 backup_postgres "immich_postgres" "immich" || warn "Immich database backup failed"
 backup_directory "/home/brandon/immich/postgres" "immich_postgres_data" || warn "Immich postgres data backup failed"
 
-# 2. OUTLINE - PostgreSQL + MinIO + Redis
-log ""
-log "=== OUTLINE BACKUP ==="
-backup_postgres "outline_postgres" "outline" || warn "Outline database backup failed"
-backup_directory "/home/brandon/projects/docker/outline/data" "outline_data" || warn "Outline data backup failed"
-
-# 3. ROMM - MariaDB database
+# 2. ROMM - MariaDB database
 log ""
 log "=== ROMM BACKUP ==="
 backup_mariadb "romm-db" "romm" || warn "Romm database backup failed"
 backup_directory "/home/brandon/romm" "romm_data" || warn "Romm data backup failed"
 
-# 4. JELLYFIN - Config and database
+# 3. JELLYFIN - Config and database
 log ""
 log "=== JELLYFIN BACKUP ==="
 backup_directory "/home/brandon/jellyfin/config" "jellyfin_config" || warn "Jellyfin config backup failed"
 
-# 5. AUDIOBOOKSHELF - Config and database
+# 4. AUDIOBOOKSHELF - Config and database
 log ""
 log "=== AUDIOBOOKSHELF BACKUP ==="
 backup_directory "/home/brandon/audiobookshelf/data" "audiobookshelf_data" || warn "Audiobookshelf data backup failed"
 
-# 6. KAVITA - Config and database
+# 5. KAVITA - Config and database
 log ""
 log "=== KAVITA BACKUP ==="
 backup_directory "/home/brandon/kavita/data" "kavita_data" || warn "Kavita data backup failed"
 
-# 7. NAVIDROME - Config and database
+# 6. NAVIDROME - Config and database
 log ""
 log "=== NAVIDROME BACKUP ==="
 backup_directory "/home/brandon/navidrome/data" "navidrome_data" || warn "Navidrome data backup failed"
 
-# 8. STASH - Config and database
+# 7. STASH - Config and database
 log ""
 log "=== STASH BACKUP ==="
 backup_directory "/home/brandon/stash/config" "stash_config" || warn "Stash config backup failed"
 
-# 9. Save current container states
+# 8. Save current container states
 log ""
 log "=== SAVING CONTAINER STATES ==="
 docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" > "$BACKUP_ROOT/container_states.txt"

@@ -15,7 +15,6 @@ chmod +x pre-reboot-backup.sh
 
 This will backup:
 - ✅ Immich PostgreSQL database (CRITICAL)
-- ✅ Outline PostgreSQL database
 - ✅ Romm MariaDB database
 - ✅ All service configurations
 - ✅ Container states
@@ -52,10 +51,6 @@ The backup file should be at least a few MB in size.
 If you want to be extra safe, you can stop other database services:
 
 ```bash
-# Outline
-cd /home/brandon/projects/docker/outline
-docker-compose stop
-
 # Romm
 cd /home/brandon/projects/docker/romm
 docker-compose stop romm-db
@@ -161,7 +156,6 @@ All services have `restart: unless-stopped` or `restart: always` configured, so 
 | Immich | `/home/brandon/immich/postgres` | Same |
 | Jellyfin | N/A | `/home/brandon/jellyfin/config` |
 | Romm | Docker volume `romm_romm-db-data` | `/home/brandon/romm` |
-| Outline | `/home/brandon/projects/docker/outline/data/postgres` | Same |
 | Audiobookshelf | N/A | `/home/brandon/audiobookshelf/data` |
 | Kavita | N/A | `/home/brandon/kavita/data` |
 | Navidrome | N/A | `/home/brandon/navidrome/data` |
@@ -181,10 +175,6 @@ docker-compose up -d
 
 # Romm
 cd /home/brandon/projects/docker/romm
-docker-compose up -d
-
-# Outline
-cd /home/brandon/projects/docker/outline
 docker-compose up -d
 
 # Others

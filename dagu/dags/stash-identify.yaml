@@ -1,7 +1,8 @@
 name: stash-identify
 description: Stash nightly identify pass
 schedule: "0 3 * * *"
-maxActiveRuns: 1
+queue: heavy
+max_active_runs: 1
 steps:
   - name: identify
     command: ssh dockerhost '~/projects/docker/scripts/stash-identify.sh'

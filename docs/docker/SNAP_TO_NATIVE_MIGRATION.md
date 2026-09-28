@@ -123,7 +123,6 @@ If migration fails:
 These services will be down during migration:
 - Jellyfin (media streaming)
 - Immich (photo backup)
-- Outline (wiki)
 - All other Docker containers
 
 ## Data Safety

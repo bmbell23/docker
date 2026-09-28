@@ -4,7 +4,7 @@
 name: mediaforge-lyrics
 description: LRCLIB -> .lrc sidecars for new music
 schedule: "40 3 * * *"
-maxActiveRuns: 1
+max_active_runs: 1
 steps:
   - name: fetch missing lyrics
     command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/lyrics fetch'

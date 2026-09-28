@@ -4,7 +4,7 @@
 name: mediaforge-audiobook-watch
 description: New audiobooks -> Audiobookshelf scan -> refresh the audit
 schedule: "*/2 * * * *"
-maxActiveRuns: 1
+max_active_runs: 1
 steps:
   - name: watch
     command: ssh dockerhost 'cd ~/projects/MediaForge && ./bin/audiobook watch'
