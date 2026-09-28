@@ -1,0 +1,13 @@
+# MuseForge's untracked private files (prompts/), which are deliberately kept out
+# of git (docker#10, MuseForge#17). The script archives, verifies, skips when
+# unchanged, and keeps the newest 30. Archives land next to the other server
+# backups rather than beside the images they'd be needed to recover.
+# Its own job, not a step in server-backups: tiny, and a red run stays visible
+# on its own. Not in the heavy queue: kilobytes of text.
+name: museforge-backup
+description: Archive MuseForge prompts/ nightly
+schedule: "30 2 * * *"
+max_active_runs: 1
+steps:
+  - name: archive prompts
+    command: ssh dockerhost 'MUSEFORGE_BACKUP_DIR=/mnt/boston/docker-backups/museforge ~/projects/MuseForge/bin/backup'
