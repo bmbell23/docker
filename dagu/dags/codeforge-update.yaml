@@ -1,0 +1,13 @@
+# Keep the CodeForge clone pulled and target/release/forge built (docker#6).
+# The launcher only rebuilds when launched, so pulls made elsewhere left a stale
+# binary. Red means the clone is dirty, off main, can't fast-forward, or the
+# build broke -- the script leaves the clone untouched in all of those cases.
+# In the heavy queue: a release build is real CPU, and waiting is harmless.
+name: codeforge-update
+description: Pull CodeForge and rebuild forge when main moves
+schedule: "*/15 * * * *"
+queue: heavy
+max_active_runs: 1
+steps:
+  - name: pull and build
+    command: ssh dockerhost '~/projects/docker/scripts/codeforge-update.sh'
