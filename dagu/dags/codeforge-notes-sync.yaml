@@ -1,0 +1,10 @@
+# Notes autosync. Ran EVERY MINUTE in cron with no visibility; if it has been
+# failing, nobody would know. Same cadence for now -- the point of moving it is
+# that its failures become visible.
+name: codeforge-notes-sync
+description: CodeForge notes autosync
+schedule: "* * * * *"
+maxActiveRuns: 1
+steps:
+  - name: sync
+    command: ssh dockerhost '~/projects/CodeForge/scripts/notes-autosync.sh'

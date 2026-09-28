@@ -10,6 +10,8 @@ services:
       - DAGU_HOME=/var/lib/dagu
       - PUID=1000
       - PGID=1000
+    extra_hosts:
+      - "dockerhost:host-gateway"
     ports:
       - '8014:8014'
     volumes:
@@ -22,6 +24,12 @@ services:
       # own paths, so the container sees them where cron sees them.
       - /home/brandon/projects:/home/brandon/projects
       - /mnt/boston/media:/mnt/boston/media
+      # Host job runner: steps ssh back to the host, because the real jobs need
+      # the docker CLI, python venvs, ffmpeg and systemd-run -- none of which
+      # exist in this container. The key is restricted to the docker bridge in
+      # authorized_keys and is gitignored (this repo is public).
+      - ./dagu_ed25519:/home/dagu/.ssh/id_ed25519:ro
+      - ./ssh_config:/home/dagu/.ssh/config:ro
       - /etc/localtime:/etc/localtime:ro
     deploy:
       resources:

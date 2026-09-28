@@ -1,0 +1,11 @@
+# Transcribe a parked audiobook with Whisper and place the ebook's chapters.
+# 7-90 minutes of CPU per book; nice'd, ionice'd, memory-capped by the script
+# itself, and it shares the chapter worker's lock so the two never overlap.
+# Replaces: */20 * * * * ~/projects/MediaForge/bin/align-cron
+name: mediaforge-align-worker
+description: Chapters from the ebook's text, for books silence detection cannot do
+schedule: "*/20 * * * *"
+maxActiveRuns: 1
+steps:
+  - name: align one book
+    command: ssh dockerhost '~/projects/MediaForge/bin/align-cron'

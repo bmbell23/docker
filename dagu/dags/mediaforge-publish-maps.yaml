@@ -1,0 +1,17 @@
+# Publish audio<->ebook position maps for GreatReads. THIS WAS NEVER SCHEDULED:
+# maps sat untouched from 2026-09-21 while 30 books were re-chaptered underneath
+# them, and were only fresh because a human ran the command (MediaForge #23).
+# Also re-verifies installed chapters so drift is caught rather than assumed.
+name: mediaforge-publish-maps
+description: Refresh sync maps + verify installed chapters against the audio
+schedule: "17 4 * * *"
+maxActiveRuns: 1
+steps:
+  - name: verify installed chapters
+    command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/audiobook verify --all'
+    continueOn:
+      failure: true
+  - name: publish maps
+    command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/audiobook sync-map --all'
+    depends:
+      - verify installed chapters

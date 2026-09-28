@@ -1,0 +1,17 @@
+# Docker housekeeping. The weekly entry used to be
+# `docker system prune -a -f --volumes`, which deletes volumes belonging to any
+# container that happens to be stopped at 3am -- the exact command this server's
+# own post-incident rules forbid. Replaced 2026-09-25 with an image-only prune.
+name: server-docker-cleanup
+description: Reclaim docker space - images only, never volumes
+schedule: "0 6 * * *"
+maxActiveRuns: 1
+steps:
+  - name: routine cleanup
+    command: ssh dockerhost '~/projects/docker/scripts/docker-cleanup.sh'
+    continueOn:
+      failure: true
+  - name: weekly image prune
+    command: ssh dockerhost 'test $(date +\%u) -eq 7 && docker image prune -a -f --filter until=168h || echo "not sunday, skipping"'
+    depends:
+      - routine cleanup

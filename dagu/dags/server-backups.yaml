@@ -1,0 +1,21 @@
+# The three nightly backups. They all fired at 02:00 in cron, competing for the
+# same disk; here they run in sequence so one finishes before the next starts.
+name: server-backups
+description: Databases, Immich, GreatReads - nightly, in sequence
+schedule: "0 2 * * *"
+maxActiveRuns: 1
+steps:
+  - name: databases
+    command: ssh dockerhost '~/projects/docker/backup-databases.sh'
+    continueOn:
+      failure: true
+  - name: greatreads db
+    command: ssh dockerhost '~/projects/GreatReads/greatreads/scripts/backup-db.sh'
+    depends:
+      - databases
+    continueOn:
+      failure: true
+  - name: immich
+    command: ssh dockerhost '~/projects/docker/immich-daily-backup.sh'
+    depends:
+      - greatreads db

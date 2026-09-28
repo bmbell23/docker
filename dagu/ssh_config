@@ -1,0 +1,7 @@
+Host dockerhost
+    HostName dockerhost
+    User brandon
+    IdentityFile /home/dagu/.ssh/id_ed25519
+    StrictHostKeyChecking accept-new
+    UserKnownHostsFile /var/lib/dagu/data/known_hosts
+    BatchMode yes

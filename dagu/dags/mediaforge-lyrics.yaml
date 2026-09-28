@@ -1,0 +1,10 @@
+# Fetch lyrics for music that has none, as .lrc sidecars Jellyfin and Symfonium
+# read. One-shot until now: new music got nothing until someone ran it by hand.
+# Tracks LRCLIB does not have are remembered and not re-asked.
+name: mediaforge-lyrics
+description: LRCLIB -> .lrc sidecars for new music
+schedule: "40 3 * * *"
+maxActiveRuns: 1
+steps:
+  - name: fetch missing lyrics
+    command: ssh dockerhost 'cd ~/projects/MediaForge && ./.venv/bin/python bin/lyrics fetch'

@@ -1,0 +1,10 @@
+# Poll for new audiobooks. /mnt/boston is CIFS, which gives no inotify, so this
+# is a `find -newer` against a stamp file -- cheap when nothing changed.
+# Replaces: */2 * * * * cd ~/projects/MediaForge && ./bin/audiobook watch
+name: mediaforge-audiobook-watch
+description: New audiobooks -> Audiobookshelf scan -> refresh the audit
+schedule: "*/2 * * * *"
+maxActiveRuns: 1
+steps:
+  - name: watch
+    command: ssh dockerhost 'cd ~/projects/MediaForge && ./bin/audiobook watch'

@@ -1,0 +1,10 @@
+# Silence-detection chapter fixer, one book per tick. Skips itself when another
+# worker holds the lock, when free RAM is under 2500 MB, or load15 is over 8.
+# Replaces: */10 * * * * ~/projects/MediaForge/bin/worker-cron
+name: mediaforge-chapter-worker
+description: Fix one audiobook's chapters (silence detection)
+schedule: "*/10 * * * *"
+maxActiveRuns: 1
+steps:
+  - name: fix one book
+    command: ssh dockerhost '~/projects/MediaForge/bin/worker-cron'
