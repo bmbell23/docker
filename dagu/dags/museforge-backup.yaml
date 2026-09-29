@@ -1,0 +1,19 @@
+# MuseForge's untracked private files (prompts/), which are deliberately kept out
+# of git (docker#10, MuseForge#17). The script archives, verifies, skips when
+# unchanged, and keeps the newest 30. The script's own default destination,
+# /mnt/boston/documents/museforge-backups, is inside documents/, which the Proxmox
+# rsync copies to the second drive.
+# Its own job, not a step in server-backups: tiny, and a red run stays visible
+# on its own. Not in the heavy queue: kilobytes of text.
+name: museforge-backup
+description: Archive MuseForge prompts/ nightly
+schedule: "30 2 * * *"
+max_active_runs: 1
+steps:
+  - name: archive prompts
+    command: ssh dockerhost '~/projects/MuseForge/bin/backup'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
