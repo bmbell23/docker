@@ -1,0 +1,27 @@
+# Keep the Proxmox host's dotfiles clone fresh.
+#
+# Staged by the proxmox session; placed by Dakota (docker#14). Not written
+# into dagu/dags/ directly: those change only through bmbell23/docker PRs.
+#
+# Why this exists: Brandon runs interactive shell commands on the Proxmox host that
+# are sourced from ~/projects/dotfiles, so the clone has to stay. It had been sitting
+# at 2ef14bc (2026-03-30) for six months. This keeps it current.
+#
+# Why it is NOT a backup dependency: Dottie's scripts are written for
+# `ssh proxmox 'bash -s' < script`, so Dagu streams them over stdin and never reads
+# this clone. A streamed script cannot be stale, so a failed pull here can never
+# break a backup. Deliberately decoupled -- do not add a `depends` from any backup job.
+#
+# --ff-only so a dirty or diverged clone fails loudly instead of creating a merge
+# commit nobody asked for. If it goes red, someone left local edits on the host.
+name: proxmox-dotfiles-pull
+description: git pull the Proxmox dotfiles clone (for Brandon's interactive shell, not for jobs)
+schedule: "0 5 * * *"
+max_active_runs: 1
+steps:
+  - name: pull dotfiles
+    command: ssh proxmox 'git -C ~/projects/dotfiles pull --ff-only'
+  - name: report head
+    command: ssh proxmox 'git -C ~/projects/dotfiles log --oneline -1'
+    depends:
+      - pull dotfiles
