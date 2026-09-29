@@ -5,3 +5,13 @@ Host dockerhost
     StrictHostKeyChecking accept-new
     UserKnownHostsFile /var/lib/dagu/data/known_hosts
     BatchMode yes
+
+# Proxmox host (docker#12). Same key; on Proxmox it's restricted to
+# from="10.0.0.160" (dockerhost's LAN IP, which the container is NATed behind).
+Host proxmox
+    HostName 10.0.0.159
+    User brandon
+    IdentityFile /home/dagu/.ssh/id_ed25519
+    StrictHostKeyChecking accept-new
+    UserKnownHostsFile /var/lib/dagu/data/known_hosts
+    BatchMode yes

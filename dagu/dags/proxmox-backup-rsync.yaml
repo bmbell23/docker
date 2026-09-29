@@ -1,0 +1,18 @@
+# Hourly second copy of boston (documents, docker-backups, most of media) onto the
+# Proxmox host's backup SSD, /mnt/backups (docker#12, agent-bus thread 008).
+# Ran from brandon's crontab on Proxmox, which showed no one that every run since
+# 2026-05-30 died right after "Backup started". The script exits non-zero on any
+# failed rsync or an unmounted drive, so red here means no second copy was made.
+# Replaces (Proxmox crontab): 0 * * * * ~/projects/dotfiles/scripts/backup-script.sh
+name: proxmox-backup-rsync
+description: Copy boston's documents, docker-backups and media to /mnt/backups on Proxmox
+schedule: "0 * * * *"
+max_active_runs: 1
+steps:
+  - name: rsync to backup SSD
+    command: ssh proxmox '~/projects/dotfiles/scripts/backup-script.sh'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
