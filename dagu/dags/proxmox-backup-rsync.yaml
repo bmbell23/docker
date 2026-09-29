@@ -1,16 +1,17 @@
-# Hourly second copy of boston (documents, docker-backups, most of media) onto the
-# Proxmox host's backup SSD, /mnt/backups (docker#12, agent-bus thread 008).
-# Ran from brandon's crontab on Proxmox, which showed no one that every run since
-# 2026-05-30 died right after "Backup started". The script exits non-zero on any
-# failed rsync or an unmounted drive, so red here means no second copy was made.
-# Replaces (Proxmox crontab): 0 * * * * ~/projects/dotfiles/scripts/backup-script.sh
+# Second copy of boston's Tier 1 data (documents + media/{audiobooks,books,games,
+# music,pictures}, ~1.47 TB) onto the Allston USB drive, /mnt/allston/boston-copy
+# (docker#12, #14; agent-bus thread 008; /mnt/boston/agent-comms/dakota-proxmox.md).
+# Was: hourly backup-script.sh -> /mnt/backups, the SanDisk that died 2026-05-30.
+# The script is streamed from this repo, so Proxmox needs no clone of it.
+# Daily, not hourly: a full pass over USB takes hours. Not in the heavy queue:
+# the work runs on Proxmox, not dockerhost.
 name: proxmox-backup-rsync
-description: Copy boston's documents, docker-backups and media to /mnt/backups on Proxmox
-schedule: "0 * * * *"
+description: Copy boston's Tier 1 data to /mnt/allston/boston-copy on Proxmox
+schedule: "0 1 * * *"
 max_active_runs: 1
 steps:
-  - name: rsync to backup SSD
-    command: ssh proxmox '~/projects/dotfiles/scripts/backup-script.sh'
+  - name: rsync to allston
+    command: sh -c "ssh proxmox 'bash -s' < /home/brandon/projects/docker/scripts/proxmox/boston-copy.sh"
 handler_on:
   failure:
     command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
