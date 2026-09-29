@@ -18,6 +18,7 @@ bridge in `authorized_keys` and is gitignored; this repo is public.
 | `stash-identify` | `03:00` | cron | |
 | `abs-library-scan` | `05:00` | — | pure HTTP, the canary that needs no host access |
 | `proxmox-backup-rsync` | `01:00` | Proxmox cron `backup-script.sh` | runs on **Proxmox**; `scripts/proxmox/boston-copy.sh` streamed over ssh; Tier 1 → `/mnt/allston/boston-copy` (sdc1 died) |
+| `proxmox-external-sync` | `04:00` | Proxmox cron `backup-external.sh` (disabled) | runs on **Proxmox**; `scripts/proxmox/external-copy.sh`; documents + pictures → `/mnt/external` |
 | `proxmox-dotfiles-pull` | `05:00` | — | keeps the Proxmox dotfiles clone current for Brandon's shell; no job depends on it |
 | `proxmox-config-backup` | `02:00` | Proxmox cron `proxmox-config-backup.sh` | runs on **Proxmox**; `/etc/pve` etc. → boston |
 

@@ -1,0 +1,18 @@
+# Copy boston's documents + pictures to the "Blank" WD Passport, /mnt/external, on
+# Proxmox (docker#16; drive map in agent-bus docs/proxmox/drive-and-backup-map.md).
+# Was backup-external.sh from cron, silently skipped since 2026-05-26 because the
+# drive was unmounted. The script is streamed from this repo; red means a disk is
+# missing or unreadable, or an rsync failed.
+# 04:00: after proxmox-backup-rsync (01:00) so the two USB drives aren't both busy.
+name: proxmox-external-sync
+description: Copy boston documents + pictures to /mnt/external on Proxmox
+schedule: "0 4 * * *"
+max_active_runs: 1
+steps:
+  - name: rsync to external
+    command: sh -c "ssh proxmox 'bash -s' < /home/brandon/projects/docker/scripts/proxmox/external-copy.sh"
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
