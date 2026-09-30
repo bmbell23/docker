@@ -3,7 +3,7 @@ name: stash
 services:
   stash:
     container_name: stash
-    image: stashapp/stash:v0.31.1   # pinned (docker#25): :latest auto-upgraded the schema and broke Stash until a manual migration
+    image: stashapp/stash:latest
     restart: unless-stopped
     ports:
       - "9999:9999"
