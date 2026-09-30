@@ -1,3 +1,7 @@
+> **Retired (docker#34, 2026-09-30).** `fix-all-docker-iptables.sh` and `docker-iptables.service` are gone:
+> they re-added DNAT rules for container IPs from months ago at every boot. Native Docker writes its own rules;
+> `scripts/maintenance/clean-stale-dnat.sh` (run by `docker-post-boot.service`) removes leftovers. Kept for history.
+
 # Docker iptables Persistence Solution
 
 ## Problem
