@@ -29,7 +29,10 @@ for d in /mnt/boston "$DEST"; do
     fi
 done
 
-opts=(-ah --stats)
+# Immich's transcoded videos and thumbnails are regenerable and ~256 GB; skipping
+# them keeps Tier 1 inside Allston (docker#19). Paths are anchored at the copied
+# folder's name because the sources have no trailing slash.
+opts=(-ah --stats --exclude=/pictures/immich-storage/encoded-video/ --exclude=/pictures/immich-storage/thumbs/)
 [ "${BOSTON_COPY_DELETE:-0}" = "1" ] && opts+=(--delete)
 
 exec 9>/tmp/boston-copy.lock
