@@ -33,5 +33,9 @@ fi
 echo "documents -> $ROOT/documents (delete=${EXTERNAL_COPY_DELETE:-0})"
 rsync "${opts[@]}" /mnt/boston/documents/ "$ROOT/documents/"
 echo "pictures -> $ROOT/media/pictures"
-rsync "${opts[@]}" --exclude="$PICTURES_EXCLUDE" /mnt/boston/media/pictures/ "$ROOT/media/pictures/"
+# Immich's transcoded videos and thumbnails are regenerable (~256 GB), docker#19.
+# Source has a trailing slash, so paths are anchored at pictures/ itself.
+rsync "${opts[@]}" --exclude="$PICTURES_EXCLUDE" \
+    --exclude=/immich-storage/encoded-video/ --exclude=/immich-storage/thumbs/ \
+    /mnt/boston/media/pictures/ "$ROOT/media/pictures/"
 echo "Backup completed: $(df -h "$ROOT" | awk 'NR==2 {print $3" used, "$4" free"}') on $ROOT"
