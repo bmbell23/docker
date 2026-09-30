@@ -14,7 +14,7 @@
 # "Running work" = Dagu job steps in flight (any `ssh dockerhost|proxmox` from the
 # dagu container, which covers every DAG), MediaForge/backup scripts started by
 # hand, and other agents' turns (this process's own ancestry is excluded).
-# Prints SAFE TO SHUT DOWN (exit 0) or the list of blockers (exit 1).
+# Exit codes: 0 SAFE TO SHUT DOWN, 1 BLOCKED (or --wait gave up), 3 WAITING ON (no --wait).
 # Snapshot: ~/projects/docker/logs/shutdown-<ts>/  (logs/ is gitignored)
 
 set -uo pipefail
@@ -63,7 +63,7 @@ while :; do
     if [ "$WAIT_MODE" != 1 ]; then
         echo "WAITING ON:"; echo "$busy" | sed 's/^/  /'
         echo "NOT SAFE YET. Re-run with --wait to wait for these and get told when it's safe."
-        exit 1
+        exit 3   # waiting (not blocked): callers may start a --wait watcher
     fi
     if [ "$busy" != "$last" ]; then
         say "waiting on:"; echo "$busy" | sed 's/^/  /'; last="$busy"
