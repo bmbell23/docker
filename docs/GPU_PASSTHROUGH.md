@@ -38,6 +38,8 @@ qm start 101
 qm agent 101 ping && echo agent-ok
 ```
 A reboot *inside* the guest doesn't pick up the new CPU type; it needs this stop/start.
+The two queued `discard=on,ssd=1` changes on scsi0/scsi1 also apply on this stop/start (thread 015). They're harmless,
+so don't be surprised by them in `qm config 101`.
 **Check** (in dockerhost): `grep -o -w avx2 /proc/cpuinfo | head -1` prints `avx2`, then `verify-boot` says CLEAN BOOT.
 **Rollback:** `qm set 101 --delete cpu`, then stop/start again.
 
@@ -53,17 +55,21 @@ together with VM 101. That's exactly the race described under "Known gap" in `do
 Apply that drop-in before phase 1, or be ready to fix the mounts by hand after the reboot.
 
 ### 0e. A backup you've actually restored (Paul + Peter)
-- A fresh `vzdump 101` (the weekly one on boston is ~106 GB, ~24 min).
+- A fresh dump, on proxmox as root: `vzdump 101 --mode snapshot --compress zstd --storage boston_backups`
+  (~106 GB, ~24 min). It won't prune the Sunday dumps: `boston_backups` is `prune-backups keep-all=1`, and only
+  the scheduled job has keep-weekly=3 (Paul, `bin/proxmox storage`).
 - **Proof it restores.** The best proof is the pve01 restore test (proxmox `host/PVE01.md` step 7: restore as
   VM 901 with the network link down, and see it reach a login prompt). At the very least, restore one file
   from it. This is the first host reboot in 125+ days, so don't take it without a restore you've seen work.
 
 ## Phase 1: BIOS (host reboot, every VM down ~10 min, Brandon at the keyboard)
-There's no IPMI on this board, so someone has to be physically at the box. Plug a monitor into the
-**motherboard** HDMI as well as the 3070.
+There's no IPMI on this board, so someone has to be physically at the box.
+**When:** never 01:00–04:00 (Allston copy, config backups and the pve01 jobs all read boston then) or around
+Sun 21:00 (vzdump). A host reboot takes boston away from pve01 as well as from dockerhost.
 
 **1a. Before the reboot, on proxmox as root:**
 ```bash
+grep -o intel_iommu=on /proc/cmdline   # must print it: the kernel will ask for the IOMMU once VT-d is on
 # Keep the host's sound driver off the 3070's audio function (#2 found snd_hda_intel holding 01:00.1).
 grep -q 'softdep snd_hda_intel' /etc/modprobe.d/vfio-pci.conf || \
   echo 'softdep snd_hda_intel pre: vfio-pci' >> /etc/modprobe.d/vfio-pci.conf
@@ -72,11 +78,41 @@ update-initramfs -u -k all
 Then run `prep-shutdown` in dockerhost, and on proxmox: `qm shutdown 101 --timeout 300`. Check `qm status 101` says stopped.
 Then reboot the host from its console or web UI. This is the one planned host reboot, and Brandon does it himself.
 
-**1b. In the BIOS** (F2/Del at boot; ASUS menu names, so check them on screen):
-- Advanced → System Agent (SA) Configuration → **VT-d = Enabled**.
-- Advanced → System Agent (SA) Configuration → Graphics Configuration → **Primary Display = CPU Graphics**
-  (iGPU). Also turn **iGPU Multi-Monitor = Enabled** so the iGPU stays on with the 3070 installed.
-- Save and exit.
+**1b. At the box, in the BIOS (flying solo).**
+The board is an **ASUS PRIME Z370-A**, running BIOS **0606**, from the board's 2017 launch. The latest is **3005**
+(2024-01-16, a LogoFAIL patch; [ASUS BIOS page](https://www.asus.com/supportonly/prime%20z370-a/helpdesk_bios/)).
+**Don't update the BIOS in this window.** 0606 already has VT-d, and a flash resets *every* setting (boot
+order, SATA mode), so it would be two changes at once. If we want 3005, it gets its own ticket and window later.
+
+Bring: a USB keyboard (plug it into a USB 2.0 port on the back), a monitor, **two** HDMI cables or one you can
+move, and your phone for photos.
+
+1. **Photograph before touching.** When the BIOS opens it's in EZ Mode. Press **F7** for Advanced Mode, then take
+   a photo of every page you're about to change: *Advanced → System Agent (SA) Configuration*,
+   its *Graphics Configuration* submenu, and the *Boot* tab (boot order, CSM). Those photos are your rollback.
+2. **Getting in:** press **Del** (or F2) over and over from power-on. If Fast Boot skips past it, use the
+   host's web UI or shell on the way down instead: `systemctl reboot --firmware-setup` (as root on proxmox) reboots
+   straight into the BIOS.
+3. **Advanced → System Agent (SA) Configuration → VT-d → Enabled.**
+4. **Advanced → System Agent (SA) Configuration → Graphics Configuration:**
+   - **Primary Display → CPU Graphics.** That's the iGPU (the 8700K's UHD 630). Leave *iGPU Memory* on Auto.
+   - **iGPU Multi-Monitor → Enabled.** Without it, the board turns the iGPU off whenever a PCIe card is present.
+     That's why the host has no iGPU on the PCI bus today.
+5. **Also check, but don't change unless it's wrong:** *Advanced → CPU Configuration → Intel Virtualization
+   Technology = Enabled* (VT-x; VMs already run, so it should be on). Leave *Above 4G Decoding* and *Resizable
+   BAR* alone: 0606 has no ReBAR, and SeaBIOS/i440fx doesn't need it.
+6. **F10 → Save & Exit.** The confirmation screen lists every change. It should show **only** VT-d, Primary
+   Display and iGPU Multi-Monitor. If anything else is listed, cancel and fix it.
+7. **Move the monitor to the motherboard HDMI** (the port on the rear I/O, not the card). From here on the host
+   console lives on the iGPU, and the 3070's outputs go dark once vfio has the card. A black screen on the 3070 is
+   expected, not a failure.
+8. You should see the Proxmox boot menu, then the login prompt, on the motherboard HDMI. Log in as root and run 1c.
+
+**If it won't boot to Proxmox:** go back into the BIOS, check the *Boot* tab against your photo (the `proxmox`
+UEFI entry first), and fix it. **If there's no picture at all:** move the cable back to the 3070, and if that's
+dark too, **Clear CMOS** (the CLRTC jumper next to the battery, per the manual) resets to defaults. Then set the
+boot order again from your photos. Defaults may bring back the old display setup, which is fine: it's what the
+host booted with for 125+ days.
 
 **1c. Check, on proxmox as root, before starting VM 101 on anything new:**
 ```bash
@@ -93,6 +129,8 @@ Run `verify-boot` in dockerhost.
 those devices from the host. Tell Paul before doing anything else.
 
 ## Phase 2: give the GPU to VM 101 (VM stop/start, ~2 min)
+**Memory first:** run `free -h` on proxmox. If swap is still in use, add `qm set 101 --memory 20480` to this same
+stop/start, not a day later (Paul).
 On proxmox as root:
 ```bash
 qm shutdown 101 --timeout 300 && qm status 101
