@@ -52,6 +52,8 @@ services:
       - /mnt/boston/media/music:/music
       # Kids podcasts
       - /mnt/boston/media/kid-media/Podcasts:/kid-podcasts
+      # Kids music (audio under 5 min; Dashboard #10)
+      - /mnt/boston/media/kid-media/Music:/kid-music
       # YouTube cookies for age-restricted downloads (export from browser via cookies.txt extension)
       # Writable: yt-dlp saves rotated cookies back on every run (ro mount breaks all downloads)
       - ./cookies.txt:/cookies/youtube.txt
