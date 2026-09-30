@@ -1,0 +1,17 @@
+# Runs verify-boot.sh once, a couple of minutes after each boot, and posts the
+# result to Brandon in Mattermost (docker#23). A user unit (linger is on).
+# Install: ln -s ~/projects/docker/systemd/verify-boot.service ~/.config/systemd/user/
+#          systemctl --user daemon-reload && systemctl --user enable verify-boot.service
+[Unit]
+Description=Verify dockerhost came back after boot (docker#23)
+After=default.target
+
+[Service]
+Type=oneshot
+# Give docker, the boston mount and the router a head start; verify-boot retries for WAIT more.
+ExecStartPre=/bin/sleep 120
+Environment=WAIT=600
+ExecStart=/home/brandon/projects/docker/scripts/maintenance/verify-boot.sh --notify @brandon
+
+[Install]
+WantedBy=default.target
