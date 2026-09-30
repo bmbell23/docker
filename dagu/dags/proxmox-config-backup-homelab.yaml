@@ -1,0 +1,17 @@
+# Shadow of proxmox-config-backup (docker#21, agent-bus thread 012: copy, prove, remove).
+# Runs the bmbell23/proxmox copy from the root-owned /opt/homelab clone, 10 min after
+# the dotfiles copy, into its own directory: the script prunes only inside $DEST, so
+# the two never eat each other's archives. Paul compares the two for 3 nights; once
+# all three of us sign off, the old job and the dotfiles copy go in a separate PR.
+name: proxmox-config-backup-homelab
+description: Archive the Proxmox host's configuration nightly (Tier 3, /opt/homelab copy, shadow run)
+schedule: "10 2 * * *"
+max_active_runs: 1
+steps:
+  - name: archive config
+    command: ssh proxmox 'PROXMOX_CONFIG_BACKUP_DEST=/mnt/boston/proxmox-config-backups-homelab /opt/homelab/backup/proxmox-config-backup.sh'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
