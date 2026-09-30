@@ -1,7 +1,9 @@
 #!/bin/bash
 # Prove dockerhost came back the way prep-shutdown.sh recorded it (docker#23).
 #
-#   scripts/maintenance/verify-boot.sh [snapshot-dir]   default: logs/shutdown-latest
+#   scripts/maintenance/verify-boot.sh [--notify <#channel|@user>] [snapshot-dir]
+#                                                       default snapshot: logs/shutdown-latest
+#   Runs by itself once per boot via systemd/verify-boot.service (--notify @brandon).
 #   WAIT=300 scripts/maintenance/verify-boot.sh         retry window for slow starters (s)
 #
 # One line per failure; exit 0 only if everything matches.
@@ -9,7 +11,10 @@
 set -uo pipefail
 
 REPO=/home/brandon/projects/docker
+NOTIFY=""
+if [ "${1:-}" = "--notify" ]; then NOTIFY="$2"; shift 2; fi
 SNAP="${1:-$REPO/logs/shutdown-latest}"
+notify() { [ -n "$NOTIFY" ] && printf '%s\n' "$*" | /home/brandon/projects/agent-bus/bin/say dakota "$NOTIFY" - >/dev/null 2>&1; return 0; }
 WAIT="${WAIT:-300}"
 [ -f "$SNAP/containers.tsv" ] || { echo "FAIL: no snapshot at $SNAP (run prep-shutdown.sh before shutting down)"; exit 2; }
 
@@ -17,7 +22,7 @@ fails=()
 ok() { echo "ok   $*"; }
 fail() { echo "FAIL $*"; fails+=("$*"); }
 
-tcp_open() { timeout 3 bash -c "exec 3<>/dev/tcp/127.0.0.1/$1" 2>/dev/null; }
+tcp_open() { timeout 3 bash -c "exec 3<>/dev/tcp/${HOST_IP:-10.0.0.160}/$1" 2>/dev/null; }
 
 # 1. Storage first: containers judged on an empty /mnt/boston would be lies.
 while read -r target _ _; do
@@ -33,6 +38,7 @@ done < "$SNAP/mounts.txt"
 if [ "${#fails[@]}" -gt 0 ]; then
     echo "STOP: storage is wrong. Containers that bind-mount it may be running on empty local dirs."
     echo "Do not judge the containers yet; fix the mount, then restart the affected containers."
+    notify "verify-boot: STORAGE IS WRONG after boot. $(printf '%s; ' "${fails[@]}") Containers that use it may be running on empty folders."
     exit 1
 fi
 
@@ -66,7 +72,7 @@ while read -r port; do
     if grep -qx "$port" "$SNAP/ports-dead-before.txt" 2>/dev/null; then
         echo "note port $port still not answering (it already wasn't before shutdown)"
     else
-        fail "port $port does not answer on localhost"; bad=1
+        fail "port $port does not answer on ${HOST_IP:-10.0.0.160}"; bad=1
     fi
 done < "$SNAP/.ports"
 [ "$bad" = 0 ] && ok "published TCP ports answer (checked $(wc -l < "$SNAP/.ports"); pre-existing failures noted above)"
@@ -92,6 +98,8 @@ missing=$(comm -23 "$SNAP/units-system.txt" <(systemctl list-unit-files --state=
 echo
 if [ "${#fails[@]}" -gt 0 ]; then
     echo "NOT CLEAN: ${#fails[@]} problem(s) above."
+    notify "verify-boot: NOT CLEAN, ${#fails[@]} problem(s): $(printf '%s; ' "${fails[@]}")"
     exit 1
 fi
 echo "CLEAN BOOT: everything in $SNAP is back."
+notify "verify-boot: CLEAN BOOT. Everything from $(basename "$(readlink -f "$SNAP")") is back."

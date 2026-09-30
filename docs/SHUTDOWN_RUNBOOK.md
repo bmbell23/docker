@@ -10,9 +10,14 @@ dockerd stop them during the normal systemd shutdown. Brandon runs the host comm
 
 ## 1. Before: `prep-shutdown` (inside dockerhost)
 ```bash
-~/projects/docker/scripts/maintenance/prep-shutdown.sh
+~/projects/docker/scripts/maintenance/prep-shutdown.sh                         # now: SAFE, or what it's waiting on
+~/projects/docker/scripts/maintenance/prep-shutdown.sh --wait --notify @brandon # wait for it all to finish, then tell me
 ```
-It **stops nothing**. It:
+Plan: `!prep-shutdown` in Mattermost (Bianca) and a shell alias (Dottie) wrap the `--wait --notify` form.
+
+It **stops nothing**. It first waits (or, without `--wait`, reports) until nothing is running:
+Dagu job steps in flight (any `ssh dockerhost|proxmox` from the dagu container), MediaForge and
+backup scripts started by hand, and other agents' turns. Then it:
 - saves a snapshot to `~/projects/docker/logs/shutdown-<ts>/` (and `logs/shutdown-latest`) with the
   running containers and their restart policy, health and published ports, the `/mnt` mounts, the
   enabled system and user units, and `iptables-save` when passwordless sudo works,
@@ -40,6 +45,13 @@ Tell Paul, and find what's holding it first (usually a container ignoring SIGTER
 Pending on this cycle anyway: `discard=on,ssd=1` on both VM disks (harmless).
 
 ## 3. After: `verify-boot` (inside dockerhost)
+It runs **by itself** once per boot: `systemd/verify-boot.service` (a user unit) waits 2 min, runs
+it with `WAIT=600`, and DMs Brandon the result. Install once:
+```bash
+ln -s ~/projects/docker/systemd/verify-boot.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable verify-boot.service
+```
+By hand, or via `!verify-boot`:
 ```bash
 ~/projects/docker/scripts/maintenance/verify-boot.sh          # compares against logs/shutdown-latest
 WAIT=600 ~/projects/docker/scripts/maintenance/verify-boot.sh  # slower starters
@@ -51,7 +63,7 @@ In order:
    method in CLAUDE.md).
 2. Every container with a restart policy is running, and healthy where it has a healthcheck. It retries
    for `WAIT` seconds (default 300).
-3. Every published TCP port answers on `localhost`.
+3. Every published TCP port answers on the LAN IP `10.0.0.160`. That's the path users take through DNAT. `localhost` can miss when a docker-proxy dies: on 2026-09-30, Immich's 2283 failed on localhost but worked for everyone else.
 4. No DNAT rule points at an IP no container has. This is the "works on 127.0.0.1, times out on Tailscale"
    failure. Needs passwordless sudo, otherwise it's skipped with the manual command printed.
 5. `agent-bus-router` is active and Mattermost `:8015` answers.

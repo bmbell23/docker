@@ -6,24 +6,77 @@
 # shutdown: a container you `docker stop` yourself stays down after boot
 # (unless-stopped), which is the trap this avoids.
 #
-#   scripts/maintenance/prep-shutdown.sh            snapshot + backups + checks
-#   SKIP_BACKUPS=1 scripts/maintenance/prep-shutdown.sh
+#   prep-shutdown.sh                  check now: SAFE, or what it's waiting on (exit 1)
+#   prep-shutdown.sh --wait           wait for running work to finish, then SAFE
+#   prep-shutdown.sh --wait --notify '@brandon'   ...and post the result to Mattermost
+#   SKIP_BACKUPS=1 / POLL=60 (seconds between checks) / MAX_WAIT=14400 (give up after)
 #
+# "Running work" = Dagu job steps in flight (any `ssh dockerhost|proxmox` from the
+# dagu container, which covers every DAG), MediaForge/backup scripts started by
+# hand, and other agents' turns (this process's own ancestry is excluded).
 # Prints SAFE TO SHUT DOWN (exit 0) or the list of blockers (exit 1).
 # Snapshot: ~/projects/docker/logs/shutdown-<ts>/  (logs/ is gitignored)
 
 set -uo pipefail
 
+WAIT_MODE=0; NOTIFY=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --wait) WAIT_MODE=1 ;;
+        --notify) NOTIFY="$2"; shift ;;
+        *) echo "usage: $0 [--wait] [--notify <#channel|@user>]" >&2; exit 2 ;;
+    esac
+    shift
+done
+POLL="${POLL:-60}"; MAX_WAIT="${MAX_WAIT:-14400}"
+
 REPO=/home/brandon/projects/docker
 TS=$(date +%Y%m%d-%H%M%S)
 SNAP_ROOT="${SNAP_ROOT:-$REPO/logs}"   # override for testing
 SNAP="$SNAP_ROOT/shutdown-$TS"
-mkdir -p "$SNAP"
 
 blockers=()
 warnings=()
 say() { echo "[$(date +%H:%M:%S)] $*"; }
+notify() { [ -n "$NOTIFY" ] && printf '%s\n' "$*" | /home/brandon/projects/agent-bus/bin/say dakota "$NOTIFY" - >/dev/null 2>&1; return 0; }
 
+# PIDs of this script and everything above it (so an agent running it doesn't wait on itself).
+ancestors() { local p=$$; while [ "$p" -gt 1 ]; do echo "$p"; p=$(awk '{print $4}' "/proc/$p/stat" 2>/dev/null || echo 1); done; }
+
+# What's still running, one item per line. Empty = quiet.
+busy_now() {
+    local self; self=$(ancestors | tr '\n' '|'); self="${self%|}"
+    pgrep -af 'ssh (dockerhost|proxmox) ' | grep -vE '^[0-9]+ (bash|sh) ' | awk '{$1=""; print "dagu job:"$0}' | cut -c1-120
+    pgrep -af 'align-cron|worker-cron|bin/audiobook|backup-databases|backup-db\.sh|stash-identify' \
+        | grep -vE "^(${self}) " | grep -v pgrep | awk '{print "script: "$2" "$3" "$4}'
+    pgrep -f 'claude -p' | grep -vxE "${self}" | while read -r pid; do
+        name=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -oE -- '--name [^·]*' | cut -c8- | head -c 40)
+        echo "agent turn: pid $pid ${name}"
+    done
+}
+
+# 0. Wait (or report) until nothing is running.
+start=$(date +%s); last=""
+while :; do
+    busy=$(busy_now)
+    [ -z "$busy" ] && break
+    if [ "$WAIT_MODE" != 1 ]; then
+        echo "WAITING ON:"; echo "$busy" | sed 's/^/  /'
+        echo "NOT SAFE YET. Re-run with --wait to wait for these and get told when it's safe."
+        exit 1
+    fi
+    if [ "$busy" != "$last" ]; then
+        say "waiting on:"; echo "$busy" | sed 's/^/  /'; last="$busy"
+    fi
+    if [ $(( $(date +%s) - start )) -ge "$MAX_WAIT" ]; then
+        notify "prep-shutdown gave up after $((MAX_WAIT/60)) min. Still running: $(echo "$busy" | tr '\n' ';')"
+        echo "GAVE UP after ${MAX_WAIT}s"; exit 1
+    fi
+    sleep "$POLL"
+done
+[ -n "$last" ] && say "everything finished"
+
+mkdir -p "$SNAP"
 say "snapshot -> $SNAP"
 
 # 1. Containers: name, restart policy, state, health, published host ports.
@@ -46,7 +99,7 @@ awk -F'\t' '$4=="unhealthy"{print $1}' "$SNAP/containers.tsv" | while read -r c;
 
 # Published TCP ports that already don't answer: not the reboot's fault afterwards.
 cut -f5 "$SNAP/containers.tsv" | tr ',' '\n' | grep -E '/tcp$' | cut -d: -f1 | sort -un | while read -r port; do
-    timeout 3 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" 2>/dev/null || echo "$port"
+    timeout 3 bash -c "exec 3<>/dev/tcp/${HOST_IP:-10.0.0.160}/$port" 2>/dev/null || echo "$port"
 done > "$SNAP/ports-dead-before.txt"
 [ -s "$SNAP/ports-dead-before.txt" ] && warnings+=("published ports already not answering: $(tr '\n' ' ' < "$SNAP/ports-dead-before.txt")")
 
@@ -66,12 +119,6 @@ for u in agent-bus-router.service; do
         || blockers+=("user unit $u is not enabled: it will not start at boot")
 done
 grep -qx 'docker.service' "$SNAP/units-system.txt" || blockers+=("docker.service is not enabled")
-
-# 3. Nothing heavy mid-flight.
-busy=$(pgrep -af 'align-cron|worker-cron|bin/audiobook|backup-databases|backup-db\.sh|stash-identify' | grep -v pgrep || true)
-[ -n "$busy" ] && blockers+=("jobs still running: $(echo "$busy" | awk '{print $2" "$3}' | tr '\n' ';')")
-turns=$(pgrep -fc 'claude -p' || true)
-[ "${turns:-0}" -gt 0 ] && warnings+=("$turns agent turn(s) in flight (includes this one if an agent ran me); check !status in Mattermost")
 
 # 4. Fresh database backups (the same scripts server-backups runs nightly).
 if [ "${SKIP_BACKUPS:-0}" != "1" ]; then
@@ -107,7 +154,9 @@ for w in "${warnings[@]}"; do echo "WARN: $w"; done
 if [ "${#blockers[@]}" -gt 0 ]; then
     for b in "${blockers[@]}"; do echo "BLOCKED: $b"; done
     echo "NOT SAFE TO SHUT DOWN (snapshot kept: $SNAP)"
+    notify "prep-shutdown: NOT SAFE. $(printf '%s; ' "${blockers[@]}")"
     exit 1
 fi
 echo "SAFE TO SHUT DOWN. Snapshot: $SNAP"
+notify "prep-shutdown: SAFE TO SHUT DOWN. $([ "${#warnings[@]}" -gt 0 ] && echo "${#warnings[@]} warning(s), see $SNAP/verdict.txt.") Next: on proxmox, qm shutdown 101 --timeout 300"
 echo "After boot, run: $REPO/scripts/maintenance/verify-boot.sh"
