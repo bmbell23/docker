@@ -1,0 +1,20 @@
+# Weekly proof that the beacon restic repo restores, not just that it accepts
+# backups (docker#31, proxmox#11). Its own DAG rather than a conditional step in
+# pve01-documents-restic, so a failed restore shows up as its own red alert.
+# Sunday 04:00: after that night's 03:00 backup, well before the Sun 21:00 vzdump.
+name: pve01-documents-restore-test
+description: Weekly restic restore test of documents on pve01
+schedule: "0 4 * * 0"
+max_active_runs: 1
+steps:
+  - name: pull homelab
+    command: ssh pve01 'sudo git -C /opt/homelab pull --ff-only'
+  - name: restore test
+    command: ssh pve01 'sudo /usr/local/sbin/peter-restic run-restore-test documents'
+    depends:
+      - pull homelab
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"

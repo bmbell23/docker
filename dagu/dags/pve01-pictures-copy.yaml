@@ -1,0 +1,22 @@
+# Copy of ALL of /mnt/boston/media/pictures (~1,162 GB, Immich's derived dirs
+# included) onto brighton (/mnt/brighton, pve01's 2T Hitachi) (docker#31,
+# proxmox#11). An rsync copy, not versioned; the script runs as homelab with no
+# sudo and no --delete, and refuses to run if brighton is unmounted or boston
+# looks empty. The first run takes hours; max_active_runs keeps nights from stacking.
+# 03:30: after the other boston readers (01:00, 02:00, 02:10, 03:00).
+name: pve01-pictures-copy
+description: rsync all boston pictures to brighton on pve01
+schedule: "30 3 * * *"
+max_active_runs: 1
+steps:
+  - name: pull homelab
+    command: ssh pve01 'sudo git -C /opt/homelab pull --ff-only'
+  - name: rsync to brighton
+    command: ssh pve01 '/opt/homelab/backup/pve01-pictures-copy.sh'
+    depends:
+      - pull homelab
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
