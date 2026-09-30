@@ -64,7 +64,7 @@ mullvad-vpn (torrents/)
 ## Documentation
 
 - `docs/docker/` — Networking, iptables fixes, migration guides
-- `docs/reboot/` — Reboot procedures and checklists
+- `docs/SHUTDOWN_RUNBOOK.md` — shutting down / starting the VM: `prep-shutdown` → `qm shutdown` → `verify-boot`
 - `docs/setup/` — Setup summaries
 - `docs/services/` — Service-specific docs (Immich setup, etc.)
 - `scripts/` — Utility scripts (backup, maintenance, iptables fixes)
