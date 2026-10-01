@@ -47,6 +47,16 @@ mkdir -p "$OUT"
 exec 9>"$OUT/.lock"
 flock -n 9 || { echo "another reconcile is running"; exit 0; }
 [ -s "$STATE" ] || echo '{"repos":{}}' > "$STATE"
+if ! jq -e '.repos | type == "object"' "$STATE" >/dev/null 2>&1; then   # never alert-loop on a bad file
+    mv "$STATE" "$STATE.corrupt-$(date +%s)"; echo '{"repos":{}}' > "$STATE"
+    echo "state.json was unreadable; moved aside and started fresh" >&2
+fi
+
+strikes() {   # strikes <kind> add|clear -> prints the count; transient failures alert on the 3rd
+    local f="$OUT/.strikes-$name-$1" n
+    if [ "$2" = clear ]; then rm -f "$f"; echo 0; return; fi
+    n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 )); [ "$dry" = 1 ] || echo "$n" > "$f"; echo "$n"
+}
 
 log() { echo "[$name] $*"; }
 
@@ -79,6 +89,11 @@ settle() {   # settle <status> <message> [log] [rollback]
     record "$@"
 }
 
+version_failed() {   # sync/deploy wait for the version; alert if it keeps failing
+    log "$1"
+    [ "$(strikes version add)" -ge 3 ] && settle failed "versioning keeps failing: $1"
+}
+
 version_main() {   # step 1
     local subj cur latest lastv age ma mi pa ta tb tc v tree commit idx body
     [[ "$(git log -1 --format=%s origin/main)" =~ ^v[0-9]+\.[0-9]+\.[0-9]+: ]] && return 0
@@ -86,15 +101,15 @@ version_main() {   # step 1
     # Only PR merges get a version (squash "Title (#N)" or "Merge pull request #N"): direct
     # pushes like agent-bus's own "bus: ..." sync commits don't.
     lastv=$(git log -1 --format=%H -E --grep='^v[0-9]+\.[0-9]+\.[0-9]+:' origin/main)
-    body=$(git log --format='%s' "${lastv:+$lastv..}origin/main" | grep -E '\(#[0-9]+\)$|^Merge pull request #' | head -20)
+    body=$(git log --format='%ct %s' "${lastv:+$lastv..}origin/main" | grep -E '^[0-9]+ (.*\(#[0-9]+\)$|Merge pull request #)' | head -20)
     [ -n "$body" ] || return 0
-    subj=$(head -1 <<<"$body"); body=$(sed 's/^/- /' <<<"$body")
+    age=$(( $(date +%s) - ${body%% *} ))                     # newest PR merge, not the tip: bus commits keep moving that
+    body=$(cut -d' ' -f2- <<<"$body"); subj=$(head -1 <<<"$body"); body=$(sed 's/^/- /' <<<"$body")
     cur=$(git show origin/main:version.txt 2>/dev/null | tr -d '[:space:]')
     latest=$(git tag -l 'v*.*.*' --sort=-v:refname | head -1); latest="${latest#v}"
     [ -n "$cur$latest" ] || return 0                       # never versioned: nothing to continue
-    age=$(( $(date +%s) - $(git log -1 --format=%ct origin/main) ))
     # ship-pr versions within seconds of merging; wait for it, and deploy nothing unversioned meanwhile.
-    [ "$age" -ge "$GRACE" ] || { log "unversioned tip is ${age}s old; giving ship-pr until ${GRACE}s"; return 1; }
+    [ "$age" -ge "$GRACE" ] || { log "unversioned merge is ${age}s old; giving ship-pr until ${GRACE}s"; return 1; }
 
     [ -n "$cur" ] || cur="$latest"
     IFS=. read -r ma mi pa <<<"$cur"
@@ -102,20 +117,25 @@ version_main() {   # step 1
     v="$ma.$mi.$((pa + 1))"
     if [ "$dry" = 1 ]; then log "[dry-run] would version origin/main as v$v: $subj"; return 0; fi
 
+    # An empty $commit would make the push below a branch delete: every step is checked.
     idx=$(mktemp)
-    GIT_INDEX_FILE="$idx" git read-tree origin/main
-    GIT_INDEX_FILE="$idx" git update-index --add --cacheinfo "100644,$(echo "$v" | git hash-object -w --stdin),version.txt"
-    tree=$(GIT_INDEX_FILE="$idx" git write-tree); rm -f "$idx"
-    commit=$(git commit-tree "$tree" -p origin/main -m "v$v: $subj" \
-             -m "Merged outside ship-pr; versioned by the deploy reconciler (docker#45)." -m "$body")
-    git tag -a "v$v" -m "Version $v" "$commit"
-    if git push -q --atomic origin "$commit:refs/heads/main" "refs/tags/v$v"; then
+    GIT_INDEX_FILE="$idx" git read-tree origin/main \
+        && GIT_INDEX_FILE="$idx" git update-index --add --cacheinfo "100644,$(echo "$v" | git hash-object -w --stdin),version.txt" \
+        && tree=$(GIT_INDEX_FILE="$idx" git write-tree) \
+        && commit=$(git commit-tree "$tree" -p origin/main -m "v$v: $subj" \
+                    -m "Merged outside ship-pr; versioned by the deploy reconciler (docker#45)." -m "$body")
+    rm -f "$idx"
+    [[ "${commit:-}" =~ ^[0-9a-f]{40}$ ]] || { version_failed "couldn't build the v$v commit"; return 1; }
+    git tag -a "v$v" -m "Version $v" "$commit" || { version_failed "tag v$v already exists locally"; return 1; }
+    if git push -q --atomic origin "$commit:refs/heads/main" "refs/tags/v$v" 2>"$OUT/.push-err"; then
+        strikes version clear >/dev/null
         git fetch -q origin
         log "versioned v$v"
         post "Versioned \`$name\` **v$v**: $subj (merged outside ship-pr)."
     else
-        git tag -d "v$v" >/dev/null                         # someone pushed first; next run retries
-        log "version push lost a race; retrying next run"
+        git tag -d "v$v" >/dev/null                         # usually someone pushed first; next run retries
+        version_failed "push of v$v rejected: $(head -2 "$OUT/.push-err")"
+        return 1
     fi
 }
 
@@ -123,12 +143,18 @@ tidy_worktrees() {   # step 3
     local wt br pr oid
     git worktree list --porcelain | awk '/^worktree /{p=substr($0,10)} /^branch /{print p "\t" substr($0,19)}' |
     while IFS=$'\t' read -r wt br; do
+        pr=; oid=
         [ "$wt" != "$path" ] && [[ "$wt" == "$HOME/worktrees/"* ]] || continue
         read -r pr oid < <(gh pr list --head "$br" --state merged --json number,headRefOid \
                              -q '.[0] | "\(.number) \(.headRefOid)"' 2>/dev/null) || true
         [ -n "${pr:-}" ] && [ "$pr" != null ] || continue
         [ "$(gh pr list --head "$br" --state open --json number -q length 2>/dev/null)" = 0 ] || continue
         if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then log "kept $wt: PR #$pr merged but it has uncommitted work"; continue; fi
+        # remove would also delete ignored files: keep anything that isn't a rebuildable cache
+        if git -C "$wt" status --porcelain --ignored 2>/dev/null | sed -n 's/^!! //p' \
+             | grep -qvE '(^|/)(__pycache__|node_modules|\.pytest_cache|\.venv|venv|\.mypy_cache|\.ruff_cache)/?$|\.pyc$'; then
+            log "kept $wt: PR #$pr merged but it has ignored files (.env, data?)"; continue
+        fi
         if [ "$(git -C "$wt" rev-parse HEAD)" != "$oid" ]; then log "kept $wt: commits since PR #$pr merged"; continue; fi
         if [ "$dry" = 1 ]; then log "[dry-run] would remove $wt (PR #$pr merged)"; continue; fi
         git worktree remove "$wt" && git branch -D "$br" >/dev/null && log "removed $wt (PR #$pr merged)"
@@ -151,7 +177,12 @@ reconcile_one() {
     local branch head moved=0 rb lg rc v
     cd "$path" 2>/dev/null || { origin=""; deployed=""; settle failed "no repo at $path"; return; }
     deployed=$(prev deployed_sha)
-    if ! err=$(git fetch -q --prune origin 2>&1); then origin=$(prev origin_sha); settle failed "git fetch failed: $err"; return; fi
+    if ! err=$(git fetch -q --prune origin 2>&1); then   # alert on the 3rd miss in a row, not a blip
+        log "git fetch failed: $err"
+        [ "$(strikes fetch add)" -ge 3 ] && { origin=$(prev origin_sha); settle failed "git fetch failed 3 runs in a row: $err"; }
+        return
+    fi
+    strikes fetch clear >/dev/null
     origin=$(git rev-parse origin/main)
 
     [ "$do_version" = false ] || version_main || return 0
@@ -179,15 +210,20 @@ reconcile_one() {
         auto=false; deployed="${head:0:7}"; settle ok "in step with main; no ./deploy, so nothing to run."; return
     fi
     auto=true
-    if [ "$deployed" = "${head:0:7}" ]; then settle ok "$(prev message)"; return; fi
+    # First sight (new repo, lost state): this commit counts as deployed unless main just moved.
+    [ -n "$deployed" ] || [ "$moved" = 1 ] || deployed="${head:0:7}"
+    if [ "$deployed" = "${head:0:7}" ]; then settle ok "$(prev message || true)"; return; fi
     if [ "$(prev status)" = failed ] && [ "$(prev origin_sha)" = "${origin:0:7}" ]; then return; fi   # alerted already; next merge retries
 
     v=$(cat version.txt 2>/dev/null || echo "${head:0:7}")
     if [ "$dry" = 1 ]; then log "[dry-run] would tag :previous and run ./deploy for v$v"; return; fi
     lg="$OUT/$name-$(date +%Y%m%d-%H%M%S).log"
-    rb=$(tag_previous)
+    case "$(prev status)" in
+    failed|deploying) rb=$(prev rollback_tag) ;;            # containers may be half-deployed: keep the last good :previous
+    *) rb=$(tag_previous) ;;
+    esac
     record deploying "deploying v$v" "$lg" "$rb"
-    timeout "$DEPLOY_TIMEOUT" ./deploy >"$lg" 2>&1; rc=$?
+    timeout -k 30 "$DEPLOY_TIMEOUT" ./deploy </dev/null >"$lg" 2>&1 9>&-; rc=$?
     ls -t "$OUT/$name"-*.log 2>/dev/null | tail -n +21 | xargs -r rm -f --     # keep 20 logs per repo
     if [ "$rc" = 0 ]; then
         deployed="${head:0:7}"
@@ -202,13 +238,15 @@ $(tail -n 8 "$lg")
     fi
 }
 
-while IFS=$'\t' read -r name path enabled do_deploy do_version; do
+rows=$(python3 -c '
+import sys, yaml
+for r in yaml.safe_load(open(sys.argv[1]))["repos"]:
+    print("\t".join([r["name"], r["path"]] + [str(r.get(k, True)).lower() for k in ("enabled", "deploy", "version")]))
+' "$REG") && [ -n "$rows" ] || { echo "registry $REG unreadable or empty" >&2; exit 1; }
+
+while IFS=$'\t' read -r -u 3 name path enabled do_deploy do_version; do
     [ -z "$only" ] || [ "$only" = "$name" ] || continue
     [ "$enabled" = false ] && continue
     auto=false
     ( reconcile_one ) || echo "[$name] reconcile crashed (exit $?)"
-done < <(python3 -c '
-import sys, yaml
-for r in yaml.safe_load(open(sys.argv[1]))["repos"]:
-    print("\t".join([r["name"], r["path"]] + [str(r.get(k, True)).lower() for k in ("enabled", "deploy", "version")]))
-' "$REG")
+done 3<<<"$rows"
