@@ -1,0 +1,18 @@
+# WordForge's stories: one SQLite file, data/writing_platform.db (docker#55,
+# WordForge#4). The script takes a consistent sqlite3 .backup, checks integrity,
+# gzips and verifies, skips when unchanged, and keeps the newest 30, in
+# /mnt/boston/documents/wordforge-backups, which the Proxmox rsync copies to allston.
+# Same shape as museforge-backup: its own small job, not in the heavy queue.
+# 02:35: after museforge-backup (02:30), before the 03:00 boston readers.
+name: wordforge-backup
+description: Back up WordForge's SQLite database nightly
+schedule: "35 2 * * *"
+max_active_runs: 1
+steps:
+  - name: backup db
+    command: ssh dockerhost '~/projects/WordForge/bin/backup'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
