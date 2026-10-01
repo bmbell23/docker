@@ -15,3 +15,14 @@ Host proxmox
     StrictHostKeyChecking accept-new
     UserKnownHostsFile /var/lib/dagu/data/known_hosts
     BatchMode yes
+
+# pve01, the backup server (docker#31, proxmox#11). Same key, logging in as the
+# no-login-shell `homelab` user, restricted to from="10.0.0.160"; its sudo allows
+# only the git pull and the two peter-restic verbs (proxmox host/PVE01.md step 4).
+Host pve01
+    HostName 10.0.0.197
+    User homelab
+    IdentityFile /home/dagu/.ssh/id_ed25519
+    StrictHostKeyChecking accept-new
+    UserKnownHostsFile /var/lib/dagu/data/known_hosts
+    BatchMode yes
