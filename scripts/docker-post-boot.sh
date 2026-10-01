@@ -7,7 +7,8 @@
 #
 #   1. Cleaning stale iptables DNAT rules for host-networked containers
 #   2. Waiting for the VPN container to be ready
-#   3. Restarting VPN-dependent containers (jackett, flaresolverr)
+#   3. Starting containers that share the VPN's network, then dropping
+#      any DNAT rule that points at a dead container IP
 #   4. Running the tailscale-docker-routing script
 #
 # Installed via systemd: docker-post-boot.service
@@ -69,44 +70,42 @@ if [ $WAITED -ge $MAX_WAIT ]; then
 fi
 
 # ---------------------------------------------------------------
-# 3. Restart VPN-dependent containers if they're not running
-#    These use network_mode: container:mullvad-vpn and often fail
-#    after a crash because the VPN wasn't ready when they started.
+# 3. Start containers that share another container's network
+#    (network_mode: container:mullvad-vpn: qbittorrent, jackett,
+#    flaresolverr). If dockerd starts one before its VPN is up it
+#    fails with "cannot join network namespace of a non running
+#    container" and never retries (qbittorrent, 2026-09-30, docker#34).
 # ---------------------------------------------------------------
-log "Checking VPN-dependent containers..."
-
-VPN_CONTAINERS=("jackett" "flaresolverr")
-
-for container in "${VPN_CONTAINERS[@]}"; do
-    STATUS=$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || echo "not_found")
-    if [ "$STATUS" != "true" ]; then
-        log "  $container is not running (status: $STATUS), restarting..."
-        docker rm -f "$container" 2>/dev/null || true
+log "Checking containers that share another container's network..."
+for id in $(docker ps -aq); do
+    read -r name mode policy running <<<"$(docker inspect -f '{{.Name}} {{.HostConfig.NetworkMode}} {{.HostConfig.RestartPolicy.Name}} {{.State.Running}}' "$id")"
+    name=${name#/}
+    case "$mode" in container:*) ;; *) continue ;; esac
+    [ "$running" = true ] && { log "  $name is already running"; continue; }
+    [ "$policy" = "no" ] && { log "  $name is down but has no restart policy; leaving it"; continue; }
+    parent=${mode#container:}
+    if [ "$(docker inspect -f '{{.State.Running}}' "$parent" 2>/dev/null)" != true ]; then
+        log "  WARNING: $name is down and its network parent $parent isn't running"
+        continue
+    fi
+    if docker start "$name" >/dev/null 2>&1; then
+        log "  started $name"
     else
-        log "  $container is already running"
+        # The parent was recreated (new id): compose re-points it at the new one.
+        dir=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$name")
+        svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$name")
+        log "  docker start $name failed; compose up -d $svc in $dir"
+        [ -n "$dir" ] && [ -n "$svc" ] && (cd "$dir" && docker compose up -d "$svc" 2>&1 | tee -a "$LOG_FILE")
     fi
 done
 
-# If any VPN-dependent container was down, restart the jackett stack
-NEEDS_RESTART=false
-for container in "${VPN_CONTAINERS[@]}"; do
-    STATUS=$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || echo "not_found")
-    if [ "$STATUS" != "true" ]; then
-        NEEDS_RESTART=true
-        break
-    fi
-done
-
-if [ "$NEEDS_RESTART" = true ]; then
-    log "  Restarting jackett compose stack..."
-    cd "$DOCKER_DIR/jackett" && docker compose up -d 2>&1 | tee -a "$LOG_FILE"
-    sleep 5
-    # Verify
-    for container in "${VPN_CONTAINERS[@]}"; do
-        STATUS=$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || echo "not_found")
-        log "  $container status after restart: $STATUS"
-    done
-fi
+# ---------------------------------------------------------------
+# 3b. Drop DNAT rules that point at IPs no running container has.
+#     Docker owns every live rule; anything else is left over and
+#     can hijack Tailscale traffic (docker#34).
+# ---------------------------------------------------------------
+log "Cleaning stale DNAT rules..."
+"$DOCKER_DIR/scripts/maintenance/clean-stale-dnat.sh" 2>&1 | tee -a "$LOG_FILE"
 
 # ---------------------------------------------------------------
 # 4. Run tailscale routing (ensure Tailscale can reach containers)

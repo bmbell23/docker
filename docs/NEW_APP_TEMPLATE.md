@@ -160,11 +160,12 @@ cd /home/brandon/projects/<App> && docker-compose up -d
 points at the old container IP). Diagnose and fix:
 ```bash
 sudo iptables-save | grep "DNAT.*<port>"     # find rule pointing at dead IP
-sudo iptables -t nat -D DOCKER <rule...>     # delete the stale one
+sudo scripts/maintenance/clean-stale-dnat.sh --dry-run   # list every stale one
+sudo scripts/maintenance/clean-stale-dnat.sh             # delete them
 ```
-Related: `scripts/fix-all-docker-iptables.sh` + `docker-iptables.service` +
-`docker-post-boot.service` in this repo reapply rules after Docker/boot. Add your
-app there if its rules don't survive restarts.
+Docker writes your app's rules itself; **don't hardcode container IPs anywhere**.
+The old `fix-all-docker-iptables.sh` did, and re-added 18 dead rules at every boot
+(docker#34). `docker-post-boot.service` runs `clean-stale-dnat.sh` at boot.
 
 **Testing note:** from the server itself, `curl http://localhost:<port>` — never curl
 the Tailscale IP from the server (always times out, exit 28).
