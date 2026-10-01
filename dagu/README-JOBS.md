@@ -25,9 +25,13 @@ bridge in `authorized_keys` and is gitignored; this repo is public.
 | `wordforge-backup` | `02:35` | — | WordForge `bin/backup`: SQLite `.backup` → `/mnt/boston/documents/wordforge-backups`, keeps 30 (docker#55) |
 
 ## Alerts
-Backup DAGs carry a `handler_on` that runs `scripts/dagu-alert.sh` on the host. It
-posts to #infra (as Dakota, via agent-bus `bin/say`) when a job **turns** red and when it
-turns green again, not on every red run. State lives in `~/.local/state/dagu-alerts/`.
+Every DAG carries a `handler_on` that runs `scripts/dagu-alert.sh` on the host. It
+posts to #dagu as @rabbot (via agent-bus `bin/say`) on every run, pass or fail, with the
+run's last output lines (docker#57). `@brandon` is pinged only when a job **turns** red.
+Pollers (`audiobook-watch`, `chapter-worker`, `align-worker`, `codeforge-notes-sync`,
+`deploy-reconciler`) pass `idle`: their successes post only when the run printed
+something, so "nothing new" ticks stay quiet. A new DAG copies the handler block; add
+`idle` if it runs more often than hourly. State lives in `~/.local/state/dagu-alerts/`.
 
 ## Still in crontab, deliberately
 `immich/watchdog.sh` (every 5 min) is **known broken** — it cannot write
