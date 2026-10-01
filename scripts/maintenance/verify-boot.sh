@@ -14,7 +14,17 @@ REPO=/home/brandon/projects/docker
 NOTIFY=""
 if [ "${1:-}" = "--notify" ]; then NOTIFY="$2"; shift 2; fi
 SNAP="${1:-$REPO/logs/shutdown-latest}"
-notify() { [ -n "$NOTIFY" ] && printf '%s\n' "$*" | /home/brandon/projects/agent-bus/bin/say dakota "$NOTIFY" - >/dev/null 2>&1; return 0; }
+notify() {
+    [ -n "$NOTIFY" ] || return 0
+    # Posts as @biscuit (the script bot). bin/say waits up to SAY_WAIT s for Mattermost;
+    # a failure is logged, never silently dropped (docker#35: the first boot DM was lost).
+    local err
+    if ! err=$(printf '%s\n' "$*" | /home/brandon/projects/agent-bus/bin/say biscuit "$NOTIFY" - 2>&1 >/dev/null); then
+        echo "NOTIFY FAILED (Mattermost post to $NOTIFY): ${err:-no reason given}" >&2
+        logger -t "$(basename "$0")" "notify to $NOTIFY failed: ${err:-no reason given}" 2>/dev/null || true
+    fi
+    return 0
+}
 WAIT="${WAIT:-300}"
 [ -f "$SNAP/containers.tsv" ] || { echo "FAIL: no snapshot at $SNAP (run prep-shutdown.sh before shutting down)"; exit 2; }
 

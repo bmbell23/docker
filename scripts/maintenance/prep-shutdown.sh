@@ -38,7 +38,17 @@ SNAP="$SNAP_ROOT/shutdown-$TS"
 blockers=()
 warnings=()
 say() { echo "[$(date +%H:%M:%S)] $*"; }
-notify() { [ -n "$NOTIFY" ] && printf '%s\n' "$*" | /home/brandon/projects/agent-bus/bin/say dakota "$NOTIFY" - >/dev/null 2>&1; return 0; }
+notify() {
+    [ -n "$NOTIFY" ] || return 0
+    # Posts as @biscuit (the script bot). bin/say waits up to SAY_WAIT s for Mattermost;
+    # a failure is logged, never silently dropped (docker#35: the first boot DM was lost).
+    local err
+    if ! err=$(printf '%s\n' "$*" | /home/brandon/projects/agent-bus/bin/say biscuit "$NOTIFY" - 2>&1 >/dev/null); then
+        echo "NOTIFY FAILED (Mattermost post to $NOTIFY): ${err:-no reason given}" >&2
+        logger -t "$(basename "$0")" "notify to $NOTIFY failed: ${err:-no reason given}" 2>/dev/null || true
+    fi
+    return 0
+}
 
 # PIDs of this script and everything above it (so an agent running it doesn't wait on itself).
 ancestors() { local p=$$; while [ "$p" -gt 1 ]; do echo "$p"; p=$(awk '{print $4}' "/proc/$p/stat" 2>/dev/null || echo 1); done; }
