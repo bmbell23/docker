@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  # node-exporter-full.json = grafana.com 1860; cadvisor-docker-insights.json = 19908
+  # (DS_PROMETHEUS input replaced with the provisioned datasource uid).
+  - name: homelab
+    folder: Homelab
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

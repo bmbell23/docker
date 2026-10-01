@@ -94,3 +94,6 @@ Thumbs.db
 *.bak.*
 
 youtube-downloader/cookies.txt
+
+# Monitoring secrets (Mongo webhook URL)
+monitoring/alertmanager/secrets/

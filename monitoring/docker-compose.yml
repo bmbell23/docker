@@ -1,0 +1,125 @@
+# Monitoring: node_exporter + cAdvisor -> Prometheus (rules) -> Alertmanager -> Mongo.
+# Grafana draws the history. See README.md in this directory.
+#
+# Data lives in named volumes, i.e. under the Docker root on /mnt/docker, not on /
+# (which is the small disk). Never `down -v` this stack: that deletes the history.
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=10GB
+      - --web.enable-lifecycle
+    extra_hosts:
+      - "dockerhost:host-gateway"
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=http://100.69.184.113:9093
+    ports:
+      - '9093:9093'
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # mongo_webhook_url: Mongo's Mattermost incoming-webhook URL (gitignored;
+      # this repo is public). Read at send time, so a missing file only fails
+      # notifications, not startup.
+      - ./alertmanager/secrets:/etc/alertmanager/secrets:ro
+      - alertmanager_data:/alertmanager
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  grafana:
+    image: grafana/grafana-oss:12.1.1
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      # First login is admin/admin and Grafana forces a new password; put it in Vaultwarden.
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Read-only view without logging in (tailnet/LAN only), and embeddable so
+      # the Dashboard can show panels. Editing still needs the admin login.
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_SERVER_ROOT_URL=http://100.69.184.113:8016
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    ports:
+      - '8016:3000'
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      # Container labels explode series counts; keep only the compose ones.
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service
+      - --disable_metrics=percpu,sched,tcp,udp,process,hugetlb,referenced_memory,cpu_topology,resctrl,advtcp,memory_numa
+    # Scraped over the compose network only; no host port.
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /mnt/docker:/mnt/docker:ro
+      - /dev/disk:/dev/disk:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: node-exporter
+    restart: unless-stopped
+    # Host network + pid so it reports the host's interfaces and processes, not its own.
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=:9100
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|run|sys|var/lib/docker|mnt/docker/.+|snap)($|/)
+    volumes:
+      - /:/host:ro,rslave
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
