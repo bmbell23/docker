@@ -281,7 +281,7 @@ build_apk() {   # step 5 (docker#51, thread 017): the APK follows main the way t
     case "$rc" in
     0)  # thread 017: the last line is "<versionName> <link>"; older scripts don't print one
         line=$(grep -v '^[[:space:]]*$' "$lg" | tail -1)
-        [[ "$line" =~ ^[^[:space:]]+\ [^[:space:]]+$ ]] || line="${v:+v$v}"
+        [[ "$line" =~ ^[^[:space:]]+\ [^[:space:]]*/[^[:space:]]*$ ]] || line="${v:+v$v}"   # link = has a /
         log "apk rebuilt for $sha"
         record_apk ok "$sha" "rebuilt ${line:-$sha}" "$lg"
         post "@brandon 📱 **$name** APK rebuilt: ${line:-$sha} ($sha)" ;;
