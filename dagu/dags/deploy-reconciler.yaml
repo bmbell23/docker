@@ -14,6 +14,12 @@ max_active_runs: 1
 steps:
   - name: reconcile
     command: ssh dockerhost '~/projects/docker/scripts/reconcile.sh'
+  # docker#49: previews of merged/closed PRs go, then build leftovers. After reconcile,
+  # so the prune sees this pass's deploy logs.
+  - name: preview cleanup
+    command: ssh dockerhost '~/projects/docker/scripts/preview-cleanup.sh'
+    depends:
+      - reconcile
 handler_on:
   failure:
     command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
