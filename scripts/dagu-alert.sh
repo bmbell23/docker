@@ -4,7 +4,7 @@
 #   dagu-alert.sh failed <dag> <run-id>   on failure
 #   dagu-alert.sh ok     <dag> <run-id>   on success
 # Alerts on the change only: a job that stays red posts once, not every run.
-# Posts as Dakota through agent-bus bin/say, which keeps the bot token out of here.
+# Posts as @biscuit (the script bot) through agent-bus bin/say, which keeps the token out of here.
 # ALERT_TEST=1 prefixes [test] and drops the @brandon ping.
 
 set -uo pipefail
@@ -68,4 +68,9 @@ ok)
     ;;
 esac
 
-printf '%s\n' "$msg" | "$SAY" dakota "$CHANNEL" -
+# bin/say waits up to SAY_WAIT s for Mattermost; if it still fails, leave a trace (docker#35).
+if ! err=$(printf '%s\n' "$msg" | "$SAY" biscuit "$CHANNEL" - 2>&1 >/dev/null); then
+    echo "ALERT NOT DELIVERED to $CHANNEL: ${err:-no reason given}" >&2
+    logger -t dagu-alert "alert for $dag not delivered: ${err:-no reason given}" 2>/dev/null || true
+    exit 1
+fi
