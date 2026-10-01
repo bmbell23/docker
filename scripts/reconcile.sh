@@ -13,8 +13,9 @@
 #               Never stash, reset or discard.
 #   3. tidy     remove worktrees of merged PRs: only clean ones whose tip is the merged head.
 #   4. deploy   if the repo has an executable ./deploy: tag its images :previous, run it.
-#   5. apk      if the registry names an `apk:` build script: once the clone is at origin/main
-#               and deployed, rebuild the APK for that commit and say so (docker#51).
+#   5. apk      if the repo has an executable ./build-apk (agent-bus thread 017's contract; until it
+#               lands, the registry's `apk:` names the repo's existing script): once the clone is at origin/main and
+#               deployed, rebuild the APK for that commit and say so (docker#51).
 # Then, for all repos: announce   any compose container under a repo's path that is new or
 #               recreated since the last run (a deploy, however it was done; docker#47).
 #
@@ -252,9 +253,11 @@ record_apk() {   # record_apk <status> <built sha> <message> [log]; apk_* fields
        "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
 }
 
-build_apk() {   # step 5 (docker#51): the APK follows main the way the containers do
-    local built lg rc v
-    [ -n "$apk" ] && cd "$path" 2>/dev/null || return 0
+build_apk() {   # step 5 (docker#51, thread 017): the APK follows main the way the containers do
+    local built lg rc v line
+    [ "$do_apk" != false ] && cd "$path" 2>/dev/null || return 0
+    [ -x build-apk ] && apk=build-apk                          # the file IS the opt-in; registry `apk:` is the bridge
+    [ -n "$apk" ] || return 0
     [ "$(prev status)" = ok ] || return 0                     # skipped, deploying or failed: not in step yet
     [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || return 0
     sha=$(git rev-parse --short=7 HEAD); built=$(prev apk_sha)
@@ -262,27 +265,33 @@ build_apk() {   # step 5 (docker#51): the APK follows main the way the container
     [ -n "$built" ] || { record_apk ok "$sha" "first sight; counted as built"; return 0; }
     [ "$built" = "$sha" ] && return 0
     [ "$(prev apk_status)" = failed ] && [ "$(prev apk_tried)" = "$sha" ] && return 0   # alerted already; next merge retries
-    [ -x "$apk" ] || { [ "$(prev apk_tried)" = "$sha" ] || post "@brandon \`$name\` apk-failed: \`$apk\` isn't an executable file in the repo. $DASH"
+    case "$(date +%H)" in 01|02|03) log "apk waits: 01:00-04:00 is the backup window"; return 0 ;; esac
+    [ -x "$apk" ] || { [ "$(prev apk_tried)" = "$sha" ] || post "@brandon ❌ \`$name\` APK build failed: \`$apk\` isn't an executable file in the repo. $DASH"
                        record_apk failed "$built" "no executable $apk"; return 0; }
     v=$(tr -d '[:space:]' < version.txt 2>/dev/null)
     if [ "$dry" = 1 ]; then log "[dry-run] would run ./$apk for ${v:+v$v }($sha)"; return 0; fi
     lg="$OUT/$name-apk-$(date +%Y%m%d-%H%M%S).log"
     record_apk building "$built" "building ${v:+v$v }($sha)" "$lg"
+    # Builds run one at a time: the repo loop is serial and the whole run holds the lock.
     # No gradle daemon: it would outlive this ssh session and could hold the lock (fd 9).
     # MealForge's simple-app has no local.properties, so the SDK comes from ANDROID_HOME.
     ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}" GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.daemon=false" \
         timeout -k 30 "$APK_TIMEOUT" "./$apk" </dev/null >"$lg" 2>&1 9>&-; rc=$?
     ls -t "$OUT/$name"-*.log 2>/dev/null | tail -n +21 | xargs -r rm -f --
-    if [ "$rc" != 0 ]; then
-        post "@brandon \`$name\` apk-failed: \`./$apk\` exited $rc for ${v:+v$v }($sha). The old APK is still served. Log: \`$lg\`
+    case "$rc" in
+    0)  # thread 017: the last line is "<versionName> <link>"; older scripts don't print one
+        line=$(grep -v '^[[:space:]]*$' "$lg" | tail -1)
+        [[ "$line" =~ ^[^[:space:]]+\ [^[:space:]]+$ ]] || line="${v:+v$v}"
+        log "apk rebuilt for $sha"
+        record_apk ok "$sha" "rebuilt ${line:-$sha}" "$lg"
+        post "@brandon 📱 **$name** APK rebuilt: ${line:-$sha} ($sha)" ;;
+    75) log "apk: nothing to rebuild for $sha"; record_apk ok "$sha" "nothing to rebuild ($sha)" "$lg"; return 0 ;;
+    *)  post "@brandon ❌ \`$name\` APK build failed: \`./$apk\` exited $rc for ${v:+v$v }($sha). The old APK is still served. Log: \`$lg\`
 \`\`\`
 $(tail -n 8 "$lg")
 \`\`\`"
-        record_apk failed "$built" "./$apk exited $rc" "$lg"; return 0
-    fi
-    log "apk rebuilt for $sha"
-    record_apk ok "$sha" "rebuilt ${v:+v$v }($sha)" "$lg"
-    post "@brandon 📱 Rebuilt the \`$name\` APK${v:+ for **v$v**} ($sha)."
+        record_apk failed "$built" "./$apk exited $rc" "$lg"; return 0 ;;
+    esac
     # The next merge would stop at skipped-dirty anyway; say why now.
     [ -z "$(git status --porcelain --untracked-files=no)" ] \
         || post "@brandon \`$name\`: \`./$apk\` changed tracked files in the main clone, so the next merge will skip it until that's fixed: $(git status --porcelain --untracked-files=no | head -5 | awk '{print $2}' | paste -sd' ')"
@@ -318,10 +327,10 @@ announce_deploys() {   # docker#47: most deploys are a hand/agent `docker compos
 rows=$(python3 -c '
 import sys, yaml
 for r in yaml.safe_load(open(sys.argv[1]))["repos"]:
-    print("\t".join([r["name"], r["path"]] + [str(r.get(k, True)).lower() for k in ("enabled", "deploy", "version")] + [r.get("apk", "")]))
+    print("\t".join([r["name"], r["path"]] + [str(r.get(k, True)).lower() for k in ("enabled", "deploy", "version", "build_apk")] + [r.get("apk", "")]))
 ' "$REG") && [ -n "$rows" ] || { echo "registry $REG unreadable or empty" >&2; exit 1; }
 
-while IFS=$'\t' read -r -u 3 name path enabled do_deploy do_version apk; do
+while IFS=$'\t' read -r -u 3 name path enabled do_deploy do_version do_apk apk; do
     [ -z "$only" ] || [ "$only" = "$name" ] || continue
     [ "$enabled" = false ] && continue
     auto=false

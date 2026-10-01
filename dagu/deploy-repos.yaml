@@ -10,8 +10,10 @@
 #     it in her repo, nothing here changes. `deploy: false` pauses it for one repo.
 #
 # Third-party stacks in docker/ stay manual: docker has no ./deploy.
-# `apk: <script>` (path from the repo root) rebuilds the repo's APK once the clone is at
-# the new main and any ./deploy ran, and Biscuit announces it (docker#51).
+#   - apk: runs the repo's own ./build-apk once the clone is at the new main and any
+#     ./deploy ran; Biscuit announces it (docker#51, agent-bus thread 017). Same opt-in:
+#     the executable file. `build_apk: false` pauses it. `apk: <script>` is the bridge:
+#     the script to run while a repo has no ./build-apk yet; ./build-apk wins once it lands.
 # `version: false` skips the version commit for a repo versioned some other way.
 repos:
   - {name: Dashboard,  path: /home/brandon/projects/Dashboard,  enabled: true}
