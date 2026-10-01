@@ -14,6 +14,8 @@
 #     ./deploy ran; Biscuit announces it (docker#51, agent-bus thread 017). Same opt-in:
 #     the executable file. `build_apk: false` pauses it. `apk: <script>` is the bridge:
 #     the script to run while a repo has no ./build-apk yet; ./build-apk wins once it lands.
+#   - win: then runs the repo's own ./build-windows, same contract and opt-in (docker#59).
+#     `build_win: false` pauses it.
 # `version: false` skips the version commit for a repo versioned some other way.
 repos:
   - {name: Dashboard,  path: /home/brandon/projects/Dashboard,  enabled: true}

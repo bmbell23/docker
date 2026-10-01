@@ -16,6 +16,7 @@
 #   5. apk      if the repo has an executable ./build-apk (agent-bus thread 017's contract; until it
 #               lands, the registry's `apk:` names the repo's existing script): once the clone is at origin/main and
 #               deployed, rebuild the APK for that commit and say so (docker#51).
+#   6. win      same again for an executable ./build-windows: the Windows installer (docker#59).
 # Then, for all repos: announce   any compose container under a repo's path that is new or
 #               recreated since the last run (a deploy, however it was done; docker#47).
 #
@@ -36,7 +37,7 @@ SAY="${RECONCILE_SAY:-/home/brandon/projects/agent-bus/bin/say}"
 CHANNEL="${RECONCILE_CHANNEL:-#infra}"
 GRACE="${RECONCILE_GRACE:-180}"
 DEPLOY_TIMEOUT="${RECONCILE_DEPLOY_TIMEOUT:-900}"
-APK_TIMEOUT="${RECONCILE_APK_TIMEOUT:-900}"
+BUILD_TIMEOUT="${RECONCILE_BUILD_TIMEOUT:-${RECONCILE_APK_TIMEOUT:-900}}"   # each APK / installer build
 DASH="http://100.69.184.113:8014/dags/deploy-reconciler"
 
 dry=0; sweep=0; only=""
@@ -45,7 +46,7 @@ while [ $# -gt 0 ]; do
     --dry-run) dry=1 ;;
     --sweep) sweep=1 ;;
     --only) only="${2:?--only needs a repo name}"; shift ;;
-    *) sed -n '2,22p' "$0"; exit 2 ;;
+    *) sed -n '2,23p' "$0"; exit 2 ;;
     esac
     shift
 done
@@ -245,56 +246,72 @@ $(tail -n 8 "$lg")
     fi
 }
 
-record_apk() {   # record_apk <status> <built sha> <message> [log]; apk_* fields only, beside the deploy's
-    [ "$dry" = 1 ] && { log "[dry-run] apk state: $1: $3"; return 0; }
-    jq --arg n "$name" --arg st "$1" --arg b "$2" --arg t "$sha" --arg msg "$3" --arg lg "${4:-}" --arg ts "$(date -Iseconds)" \
-       '.updated=$ts | .repos[$n] = ((.repos[$n] // {}) + {apk_status:$st, apk_sha:$b, apk_tried:$t, apk_message:$msg, apk_ts:$ts}
-         + (if $lg != "" then {apk_log:$lg} else {} end))' \
+record_build() {   # record_build <kind> <status> <built sha> <message> [log]; <kind>_* fields only, beside the deploy's
+    [ "$dry" = 1 ] && { log "[dry-run] $1 state: $2: $4"; return 0; }
+    jq --arg n "$name" --arg k "$1" --arg st "$2" --arg b "$3" --arg t "$sha" --arg msg "$4" --arg lg "${5:-}" --arg ts "$(date -Iseconds)" \
+       '.updated=$ts | .repos[$n] = ((.repos[$n] // {}) + {($k+"_status"):$st, ($k+"_sha"):$b, ($k+"_tried"):$t, ($k+"_message"):$msg, ($k+"_ts"):$ts}
+         + (if $lg != "" then {($k+"_log"):$lg} else {} end))' \
        "$STATE" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
 }
 
-build_apk() {   # step 5 (docker#51, thread 017): the APK follows main the way the containers do
-    local built lg rc v line
-    [ "$do_apk" != false ] && cd "$path" 2>/dev/null || return 0
-    [ -x build-apk ] && apk=build-apk                          # the file IS the opt-in; registry `apk:` is the bridge
-    [ -n "$apk" ] || return 0
+# Steps 5 and 6: the APK (docker#51, thread 017) and the Windows installer (docker#59) follow main
+# the way the containers do. Same contract for both scripts: exit 0 = built, last line
+# "<version> <link>"; exit 75 = nothing to rebuild; anything else = failed.
+build() {   # build apk|win
+    local k="$1" script what built lg rc v line ver link
+    cd "$path" 2>/dev/null || return 0
+    case "$k" in
+    apk) [ "$do_apk" != false ] || return 0
+         script="$apk"; [ -x build-apk ] && script=build-apk    # the file IS the opt-in; registry `apk:` is the bridge
+         what=APK ;;
+    win) [ "$do_win" != false ] && [ -x build-windows ] || return 0
+         script=build-windows; what="Windows installer" ;;
+    esac
+    [ -n "$script" ] || return 0
     [ "$(prev status)" = ok ] || return 0                     # skipped, deploying or failed: not in step yet
     [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || return 0
-    sha=$(git rev-parse --short=7 HEAD); built=$(prev apk_sha)
-    # First sight: this commit counts as built, so turning it on doesn't start every gradle build at once.
-    [ -n "$built" ] || { record_apk ok "$sha" "first sight; counted as built"; return 0; }
+    sha=$(git rev-parse --short=7 HEAD); built=$(prev "${k}_sha")
+    # APK first sight: this commit counts as built, so turning it on doesn't start every gradle build
+    # at once. The Windows hook gates itself on the published installer, so first sight just runs it.
+    [ -n "$built" ] || [ "$k" = win ] || { record_build "$k" ok "$sha" "first sight; counted as built"; return 0; }
     [ "$built" = "$sha" ] && return 0
-    [ "$(prev apk_status)" = failed ] && [ "$(prev apk_tried)" = "$sha" ] && return 0   # alerted already; next merge retries
-    case "$(date +%H)" in 01|02|03) log "apk waits: 01:00-04:00 is the backup window"; return 0 ;; esac
-    [ -x "$apk" ] || { [ "$(prev apk_tried)" = "$sha" ] || post "@brandon ❌ \`$name\` APK build failed: \`$apk\` isn't an executable file in the repo. $DASH"
-                       record_apk failed "$built" "no executable $apk"; return 0; }
+    [ "$(prev "${k}_status")" = failed ] && [ "$(prev "${k}_tried")" = "$sha" ] && return 0   # alerted already; next merge retries
+    case "$(date +%H)" in 01|02|03) log "$k waits: 01:00-04:00 is the backup window"; return 0 ;; esac
+    [ -x "$script" ] || { [ "$(prev "${k}_tried")" = "$sha" ] || post "@brandon ❌ \`$name\` $what build failed: \`$script\` isn't an executable file in the repo. $DASH"
+                          record_build "$k" failed "$built" "no executable $script"; return 0; }
     v=$(tr -d '[:space:]' < version.txt 2>/dev/null)
-    if [ "$dry" = 1 ]; then log "[dry-run] would run ./$apk for ${v:+v$v }($sha)"; return 0; fi
-    lg="$OUT/$name-apk-$(date +%Y%m%d-%H%M%S).log"
-    record_apk building "$built" "building ${v:+v$v }($sha)" "$lg"
+    if [ "$dry" = 1 ]; then log "[dry-run] would run ./$script for ${v:+v$v }($sha)"; return 0; fi
+    lg="$OUT/$name-$k-$(date +%Y%m%d-%H%M%S).log"
+    record_build "$k" building "$built" "building ${v:+v$v }($sha)" "$lg"
     # Builds run one at a time: the repo loop is serial and the whole run holds the lock.
     # No gradle daemon: it would outlive this ssh session and could hold the lock (fd 9).
     # MealForge's simple-app has no local.properties, so the SDK comes from ANDROID_HOME.
     ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}" GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.daemon=false" \
-        timeout -k 30 "$APK_TIMEOUT" "./$apk" </dev/null >"$lg" 2>&1 9>&-; rc=$?
+        timeout -k 30 "$BUILD_TIMEOUT" "./$script" </dev/null >"$lg" 2>&1 9>&-; rc=$?
     ls -t "$OUT/$name"-*.log 2>/dev/null | tail -n +21 | xargs -r rm -f --
     case "$rc" in
     0)  # thread 017: the last line is "<versionName> <link>"; older scripts don't print one
         line=$(grep -v '^[[:space:]]*$' "$lg" | tail -1)
         [[ "$line" =~ ^[^[:space:]]+\ [^[:space:]]*/[^[:space:]]*$ ]] || line="${v:+v$v}"   # link = has a /
-        log "apk rebuilt for $sha"
-        record_apk ok "$sha" "rebuilt ${line:-$sha}" "$lg"
-        post "@brandon 📱 **$name** APK rebuilt: ${line:-$sha} ($sha)" ;;
-    75) log "apk: nothing to rebuild for $sha"; record_apk ok "$sha" "nothing to rebuild ($sha)" "$lg"; return 0 ;;
-    *)  post "@brandon ❌ \`$name\` APK build failed: \`./$apk\` exited $rc for ${v:+v$v }($sha). The old APK is still served. Log: \`$lg\`
+        log "$k rebuilt for $sha"
+        record_build "$k" ok "$sha" "rebuilt ${line:-$sha}" "$lg"
+        if [ "$k" = apk ]; then
+            post "@brandon 📱 **$name** APK rebuilt: ${line:-$sha} ($sha)"
+        else
+            ver="${line%% *}"; link=""; [ "$ver" = "$line" ] || link="${line#* }"
+            [ -n "$ver" ] || ver="$sha"; [[ "$ver" =~ ^[0-9] ]] && ver="v$ver"
+            post "@brandon 🪟 **$name** $ver installer rebuilt${link:+ · $link} ($sha)"
+        fi ;;
+    75) log "$k: nothing to rebuild for $sha"; record_build "$k" ok "$sha" "nothing to rebuild ($sha)" "$lg"; return 0 ;;
+    *)  post "@brandon ❌ \`$name\` $what build failed: \`./$script\` exited $rc for ${v:+v$v }($sha). The old one is still served. Log: \`$lg\`
 \`\`\`
 $(tail -n 8 "$lg")
 \`\`\`"
-        record_apk failed "$built" "./$apk exited $rc" "$lg"; return 0 ;;
+        record_build "$k" failed "$built" "./$script exited $rc" "$lg"; return 0 ;;
     esac
     # The next merge would stop at skipped-dirty anyway; say why now.
     [ -z "$(git status --porcelain --untracked-files=no)" ] \
-        || post "@brandon \`$name\`: \`./$apk\` changed tracked files in the main clone, so the next merge will skip it until that's fixed: $(git status --porcelain --untracked-files=no | head -5 | awk '{print $2}' | paste -sd' ')"
+        || post "@brandon \`$name\`: \`./$script\` changed tracked files in the main clone, so the next merge will skip it until that's fixed: $(git status --porcelain --untracked-files=no | head -5 | awk '{print $2}' | paste -sd' ')"
 }
 
 announce_deploys() {   # docker#47: most deploys are a hand/agent `docker compose up`, not ./deploy
@@ -327,13 +344,13 @@ announce_deploys() {   # docker#47: most deploys are a hand/agent `docker compos
 rows=$(python3 -c '
 import sys, yaml
 for r in yaml.safe_load(open(sys.argv[1]))["repos"]:
-    print("\t".join([r["name"], r["path"]] + [str(r.get(k, True)).lower() for k in ("enabled", "deploy", "version", "build_apk")] + [r.get("apk", "")]))
+    print("\t".join([r["name"], r["path"]] + [str(r.get(k, True)).lower() for k in ("enabled", "deploy", "version", "build_apk", "build_win")] + [r.get("apk", "")]))
 ' "$REG") && [ -n "$rows" ] || { echo "registry $REG unreadable or empty" >&2; exit 1; }
 
-while IFS=$'\t' read -r -u 3 name path enabled do_deploy do_version do_apk apk; do
+while IFS=$'\t' read -r -u 3 name path enabled do_deploy do_version do_apk do_win apk; do
     [ -z "$only" ] || [ "$only" = "$name" ] || continue
     [ "$enabled" = false ] && continue
     auto=false
-    ( reconcile_one; build_apk ) || echo "[$name] reconcile crashed (exit $?)"
+    ( reconcile_one; build apk; build win ) || echo "[$name] reconcile crashed (exit $?)"
 done 3<<<"$rows"
 announce_deploys
