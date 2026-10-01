@@ -1,0 +1,21 @@
+# GitOps reconciler (docker#45, agent-bus thread 016): every repo in
+# dagu/deploy-repos.yaml follows origin/main, whoever merged and however.
+# Versions PRs merged outside ship-pr, fast-forwards the main clone, tidies merged
+# worktrees, and runs the repo's ./deploy if it has one. Details: scripts/reconcile.sh.
+#
+# On the host over ssh like every job: git fetch needs brandon's GitHub key, and each
+# ./deploy uses host paths and its own docker compose.
+# The script posts its own per-repo news to #infra as Biscuit and exits 0 when a repo
+# is skipped or a deploy fails; red here means the reconciler itself broke.
+name: deploy-reconciler
+description: Keep every repo's main clone and containers in step with origin/main
+schedule: "*/2 * * * *"
+max_active_runs: 1
+steps:
+  - name: reconcile
+    command: ssh dockerhost '~/projects/docker/scripts/reconcile.sh'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"

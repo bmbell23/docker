@@ -19,6 +19,7 @@ bridge in `authorized_keys` and is gitignored; this repo is public.
 | `abs-library-scan` | `05:00` | — | pure HTTP, the canary that needs no host access |
 | `proxmox-backup-rsync` | `01:00` | Proxmox cron `backup-script.sh` | runs on **Proxmox**; `scripts/proxmox/boston-copy.sh` streamed over ssh; Tier 1 → `/mnt/allston/boston-copy` (sdc1 died) |
 | `proxmox-dotfiles-pull` | `05:00` | — | keeps the Proxmox dotfiles clone current for Brandon's shell; no job depends on it |
+| `deploy-reconciler` | `*/2` | `ship-pr`'s versioning when Brandon merges in the GitHub UI; every manual `docker compose up` after a merge | repos in `dagu/deploy-repos.yaml`: version, fast-forward, tidy merged worktrees, run `./deploy`. State in `logs/deploy/state.json`. docker#45 |
 | `proxmox-config-backup` | `02:00` | Proxmox cron `proxmox-config-backup.sh` | runs on **Proxmox**; `/etc/pve` etc. → boston |
 
 ## Alerts
