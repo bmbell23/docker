@@ -10,6 +10,8 @@
 #     it in her repo, nothing here changes. `deploy: false` pauses it for one repo.
 #
 # Third-party stacks in docker/ stay manual: docker has no ./deploy.
+# `apk: <script>` (path from the repo root) rebuilds the repo's APK once the clone is at
+# the new main and any ./deploy ran, and Biscuit announces it (docker#51).
 # `version: false` skips the version commit for a repo versioned some other way.
 repos:
   - {name: Dashboard,  path: /home/brandon/projects/Dashboard,  enabled: true}
@@ -20,16 +22,16 @@ repos:
   - {name: CodeForge,  path: /home/brandon/projects/CodeForge,  enabled: true}
   - {name: Dictionary, path: /home/brandon/projects/Dictionary, enabled: true}
   - {name: dotfiles,   path: /home/brandon/projects/dotfiles,   enabled: true}
-  - {name: FunForge,   path: /home/brandon/projects/FunForge,   enabled: true}
-  - {name: GreatReads, path: /home/brandon/projects/GreatReads, enabled: true}
+  - {name: FunForge,   path: /home/brandon/projects/FunForge,   enabled: true, apk: build-apk.sh}
+  - {name: GreatReads, path: /home/brandon/projects/GreatReads, enabled: true, apk: build-app.sh}
   - {name: Libby,      path: /home/brandon/projects/Libby,      enabled: true}
-  - {name: LifeForge,  path: /home/brandon/projects/LifeForge,  enabled: true}
-  - {name: MealForge,  path: /home/brandon/projects/MealForge,  enabled: true}
+  - {name: LifeForge,  path: /home/brandon/projects/LifeForge,  enabled: true, apk: build-apk.sh}
+  - {name: MealForge,  path: /home/brandon/projects/MealForge,  enabled: true, apk: build-app.sh}
   - {name: MediaForge, path: /home/brandon/projects/MediaForge, enabled: true}
   - {name: MuseForge,  path: /home/brandon/projects/MuseForge,  enabled: true}
   - {name: NerdNews,   path: /home/brandon/projects/NerdNews,   enabled: true}
   - {name: Notes,      path: /home/brandon/projects/Notes,      enabled: true}
   - {name: PokeVault,  path: /home/brandon/projects/PokeVault,  enabled: true}
   - {name: Proxmox,    path: /home/brandon/projects/Proxmox,    enabled: true}
-  - {name: WebForge,   path: /home/brandon/projects/WebForge,   enabled: true}
+  - {name: WebForge,   path: /home/brandon/projects/WebForge,   enabled: true, apk: scripts/build-apk.sh}
   - {name: WordForge,  path: /home/brandon/projects/WordForge,  enabled: true}
