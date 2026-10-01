@@ -1,0 +1,35 @@
+# Repos the reconciler keeps in step with origin/main (docker#45, agent-bus thread 016).
+# Read every run by scripts/reconcile.sh; no restart needed after editing.
+#
+# For every enabled repo, whoever merged and however (ship-pr or the GitHub UI):
+#   - version: main gets its vX.Y.Z commit + tag if the merge didn't bring one
+#   - the main clone fast-forwards to origin/main (never stash, reset or discard)
+#   - worktrees of merged PRs are removed, if clean and nothing unpushed
+#   - deploy: runs the repo's own ./deploy when main moved. Having an executable
+#     ./deploy at the repo root IS the opt-in (thread 016's contract): the owner adds
+#     it in her repo, nothing here changes. `deploy: false` pauses it for one repo.
+#
+# Third-party stacks in docker/ stay manual: docker has no ./deploy.
+# `version: false` skips the version commit for a repo versioned some other way.
+repos:
+  - {name: Dashboard,  path: /home/brandon/projects/Dashboard,  enabled: true}
+  - {name: docker,     path: /home/brandon/projects/docker,     enabled: true}
+  - {name: agent-bus,  path: /home/brandon/projects/agent-bus,  enabled: true}
+  - {name: ArtForge,   path: /home/brandon/projects/ArtForge,   enabled: true}
+  - {name: Chess,      path: /home/brandon/projects/Chess,      enabled: true}
+  - {name: CodeForge,  path: /home/brandon/projects/CodeForge,  enabled: true}
+  - {name: Dictionary, path: /home/brandon/projects/Dictionary, enabled: true}
+  - {name: dotfiles,   path: /home/brandon/projects/dotfiles,   enabled: true}
+  - {name: FunForge,   path: /home/brandon/projects/FunForge,   enabled: true}
+  - {name: GreatReads, path: /home/brandon/projects/GreatReads, enabled: true}
+  - {name: Libby,      path: /home/brandon/projects/Libby,      enabled: true}
+  - {name: LifeForge,  path: /home/brandon/projects/LifeForge,  enabled: true}
+  - {name: MealForge,  path: /home/brandon/projects/MealForge,  enabled: true}
+  - {name: MediaForge, path: /home/brandon/projects/MediaForge, enabled: true}
+  - {name: MuseForge,  path: /home/brandon/projects/MuseForge,  enabled: true}
+  - {name: NerdNews,   path: /home/brandon/projects/NerdNews,   enabled: true}
+  - {name: Notes,      path: /home/brandon/projects/Notes,      enabled: true}
+  - {name: PokeVault,  path: /home/brandon/projects/PokeVault,  enabled: true}
+  - {name: Proxmox,    path: /home/brandon/projects/Proxmox,    enabled: true}
+  - {name: WebForge,   path: /home/brandon/projects/WebForge,   enabled: true}
+  - {name: WordForge,  path: /home/brandon/projects/WordForge,  enabled: true}
