@@ -1,0 +1,275 @@
+# Backup inventory: the one record of what is backed up, where, how and why (#43).
+# Trilium (Development/Home Lab/Backups) and the Dashboard's backup view read this;
+# change it here first. Signed off by Dakota, Paul and Peter, #infra, 2026-09-30.
+#
+# Per entry:
+#   priority  P0 (irreplaceable) .. P4 (don't care); null = Brandon hasn't set it
+#   size      du -sh on dockerhost, 2026-09-30, unless noted
+#   primary / secondary / offsite:
+#     dest      where the copy lands, or none
+#     method    rsync | restic | vzdump | pbs | tar | dump | git | none
+#     dag       Dagu DAG name (dagu/dags/<dag>.yaml); null when Dagu doesn't run it
+#     scheduler dagu | proxmox (jobs.cfg) | pbs | builtin | manual | none
+#     schedule  cron or plain words
+#     state     ok | planned | none | partial
+#     ref       ticket/PR when state is planned
+#   why       the reason, especially for "none"
+#
+# Places: boston = /mnt/boston (8 TB HDD, the live data). allston = /mnt/allston/boston-copy
+# on proxmox (USB, plain mirror, no history, 89% full). beacon / brighton / fenway = pve01's
+# disks (restic repo / pictures copy / PBS datastore).
+
+entries:
+  - name: documents
+    source: /mnt/boston/documents
+    priority: P0
+    size: 26G
+    primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
+    secondary: {dest: pve01 beacon, method: restic, dag: pve01-documents-restic, scheduler: dagu, schedule: "0 3 * * *", state: planned, ref: "docker#31 PR#32"}
+    restore_test: {dag: pve01-documents-restore-test, schedule: "0 4 * * 0", state: planned, ref: "PR#32"}
+    offsite: none
+    why: >-
+      Restic keeps every snapshot (no forget/prune policy yet). Its password is in
+      /root/.restic/documents.pass on pve01; whether it's in Vaultwarden is unverified. Stale
+      copy on /mnt/external from 2026-03-30. Includes trilium-backups/ and museforge-backups/.
+
+  - name: audiobooks
+    source: /mnt/boston/media/audiobooks
+    priority: P1
+    size: 264G
+    primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
+    secondary: {state: none}
+    offsite: none
+    why: Single copy. brighton later, if space allows.
+
+  - name: books
+    source: /mnt/boston/media/books
+    priority: P1
+    size: 6.7G
+    primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
+    secondary: {state: none}
+    offsite: none
+    why: Single copy. Small enough to join the beacon restic repo cheaply.
+
+  - name: games
+    source: /mnt/boston/media/games
+    priority: P2
+    size: 22G
+    primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
+    secondary: {state: none}
+    offsite: none
+    why: Single copy.
+
+  - name: music
+    source: /mnt/boston/media/music
+    priority: P2
+    size: 49G
+    primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
+    secondary: {state: none}
+    offsite: none
+    why: Single copy.
+
+  - name: media-other
+    source: /mnt/boston/media/other
+    priority: P3
+    size: 517M
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: Not in the Allston source list.
+
+  - name: photos
+    source: /mnt/boston/media/pictures/library/photos
+    priority: P0
+    size: 560G
+    primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
+    secondary: {dest: pve01 brighton, method: rsync, dag: pve01-pictures-copy, scheduler: dagu, schedule: "30 3 * * *", state: planned, ref: "docker#31 PR#32"}
+    offsite: none
+    why: >-
+      Brighton runs rsync without --delete: a photo deleted on boston survives there, an
+      edited one is overwritten (no versions). Stale copy on /mnt/external from 2026-03-30.
+
+  - name: images
+    source: /mnt/boston/media/pictures/library/images
+    priority: P3
+    size: 80G
+    primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
+    secondary: {dest: pve01 brighton, method: rsync, dag: pve01-pictures-copy, scheduler: dagu, schedule: "30 3 * * *", state: planned, ref: "docker#31 PR#32"}
+    offsite: none
+    why: Rides along with pictures/. Same as photos.
+
+  - name: home-videos
+    source: /mnt/boston/media/videos/home
+    priority: P0
+    size: 1.7G
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: GAP. P0 with no copy anywhere. Not in the Allston source list (scripts/proxmox/boston-copy.sh).
+
+  - name: weston-camera
+    source: "/mnt/boston/media/weston's camera"
+    priority: null
+    size: 1.6G
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: GAP. Camera footage with no copy anywhere. Looks P0; Brandon to set it.
+
+  - name: movies
+    source: /mnt/boston/media/videos/movies
+    priority: P3
+    size: 186G
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: Re-acquirable.
+
+  - name: shows
+    source: /mnt/boston/media/videos/shows
+    priority: P3
+    size: 35G
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: Re-acquirable.
+
+  - name: social-videos
+    source: /mnt/boston/media/videos/social
+    priority: P4
+    size: 66G
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: By choice (P4).
+
+  - name: game-videos
+    source: /mnt/boston/media/videos/games
+    priority: P4
+    size: 14G
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: By choice (P4).
+
+  - name: kid-media
+    source: /mnt/boston/media/kid-media
+    priority: null
+    size: 3.6G
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: FunForge's library. Not in the Allston source list.
+
+  - name: onedrive-isos
+    source: /mnt/boston/OneDrive, /mnt/boston/isos
+    priority: P3
+    size: not measured
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: Tier 3 in the Phase 6 plan.
+
+  - name: docker-db-dumps
+    source: /mnt/boston/docker-backups
+    priority: null
+    size: 483M
+    primary:   {dest: boston, method: dump, dag: server-backups, scheduler: dagu, schedule: "0 2 * * *", state: ok}
+    secondary: {state: none}
+    offsite: none
+    why: >-
+      RomM and Jellyfin DB dumps. This is itself the backup, and it sits on the same disk as
+      the data. Not in the Allston source list.
+
+  - name: vaultwarden
+    source: ~/projects/docker/vaultwarden/data (VM 101 root disk)
+    priority: null
+    size: not measured
+    primary:   {dest: boston proxmox-backups, method: vzdump, dag: null, scheduler: proxmox, schedule: "Sun 21:00", state: ok}
+    secondary: {state: none}
+    offsite: none
+    why: >-
+      Only inside the weekly VM image. scripts/backup/vaultwarden-backup.sh exists but no DAG
+      runs it (docker#40). Holds the passwords for every other backup.
+
+  - name: docker-app-data
+    source: each repo's ./data, /mnt/docker (VM 101 disks scsi0 104G + scsi1 200G)
+    priority: null
+    size: 304G image (99.2G archive)
+    primary:   {dest: boston proxmox-backups, method: vzdump, dag: null, scheduler: proxmox, schedule: "Sun 21:00, keep 3", state: ok}
+    secondary: {dest: pve01 fenway, method: pbs, dag: null, scheduler: manual, schedule: one run, state: planned, ref: "proxmox#11 runbook §6"}
+    offsite: none
+    why: >-
+      Whole-VM image only, weekly (both disks verified in the 2026-09-27 vzdump log). Per-app
+      coverage is docker#40.
+
+  - name: vm-101-dumps
+    source: /mnt/boston/proxmox-backups
+    priority: null
+    size: 294G
+    primary:   {dest: boston, method: vzdump, dag: null, scheduler: proxmox, schedule: "Sun 21:00, keep 3", state: ok}
+    secondary: {dest: pve01 fenway, method: pbs, dag: null, scheduler: manual, schedule: one run, state: planned, ref: "proxmox#11 runbook §6"}
+    offsite: none
+    why: >-
+      Not in Dagu on purpose: Dagu runs inside VM 101. Same disk as the data. Fenway is empty
+      (259M used) and proxmox has no fenway-pbs storage yet. A recurring PBS copy needs a
+      second jobs.cfg entry (Paul). PBS prunes (keep-last 3), GCs and verifies on its own scheduler.
+
+  - name: proxmox-config
+    source: /mnt/boston/proxmox-config-backups
+    priority: null
+    size: 32G
+    primary:   {dest: boston, method: tar, dag: proxmox-config-backup, scheduler: dagu, schedule: "0 2 * * *", state: partial}
+    secondary: {state: none}
+    offsite: none
+    why: >-
+      Runs as brandon, so no /etc/pve/priv. Last complete archive 2026-09-29 13:29 (root run),
+      kept as newest complete. It holds the cluster CA key on guest-writable boston (proxmox#6);
+      move to a root-only /opt/homelab path pending (Paul). The 32G is old 09-02..09-24
+      archives, pruning out by late October.
+
+  - name: dockerhost-etc
+    source: /etc (dockerhost)
+    priority: null
+    size: small
+    primary:   {dest: /etc/.git, method: git, dag: null, scheduler: builtin, schedule: etckeeper, state: ok}
+    secondary: {dest: boston proxmox-backups, method: vzdump, dag: null, scheduler: proxmox, schedule: "Sun 21:00", state: ok}
+    offsite: none
+    why: Whether etckeeper pushes anywhere is unverified (root-only); assume local only.
+
+  - name: proxmox-host-os
+    source: proxmox host
+    priority: null
+    size: null
+    primary:   {dest: /etc/.git, method: git, dag: null, scheduler: builtin, schedule: etckeeper.timer, state: partial}
+    secondary: {state: none}
+    offsite: none
+    why: >-
+      Not backed up, by choice: reinstall plus the config archive. Its etckeeper repo is
+      local; a push anywhere is unverified (root-only).
+
+  - name: pve01-legacy-data
+    source: pve01 /mnt/beacon (18.1G), /mnt/brighton (25.4G)
+    priority: null
+    size: 43.5G
+    primary:   {state: none}
+    secondary: {state: none}
+    offsite: none
+    why: Pre-plan data, uncatalogued. Peter inventories it once his restic verb works.
+
+# Not a destination for anything today, kept here so the gap is on the record.
+drives:
+  - name: external
+    path: /mnt/external (proxmox, WD Passport 2 TB); /mnt/remote/external on pve01
+    state: idle
+    last_written: 2026-03-30
+    used: 1.4T
+    free: 432G
+    holds: ~95% of photos and ~95% of documents, from March
+    missing: ~281G (all music, half the audiobooks, games in the new layout, Immich since March, 1.4G of documents)
+    proposed: >-
+      Offline 3rd copy. Monthly Dagu job proxmox-external-sync, rsync of Tier 1 without
+      videos, no --delete, skips if unplugged. Waiting on Brandon (agent-bus thread 012).
+    note: On pve01 it's mounted read-write without nofail (boston is ro,nofail); fstab fix is Brandon's.
+
+offsite: none  # parked by Brandon's call; no copy of anything survives the house
