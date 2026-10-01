@@ -1,0 +1,26 @@
+route:
+  receiver: mongo
+  group_by: [alertname, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 6h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: mongo
+      repeat_interval: 1h
+
+# A critical alert silences its own warning (same alert, same disk/host).
+inhibit_rules:
+  - source_matchers: [severity="critical"]
+    target_matchers: [severity="warning"]
+    equal: [alertname, instance, mountpoint]
+
+receivers:
+  # Mattermost incoming webhooks speak Slack's format.
+  - name: mongo
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/mongo_webhook_url
+        username: Mongo
+        send_resolved: true
+        title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}🔴{{ else }}🟠{{ end }} {{ .CommonLabels.alertname }}{{ else }}✅ Resolved: {{ .CommonLabels.alertname }}{{ end }}'
+        text: '{{ range .Alerts }}- {{ .Annotations.summary }}{{ "\n" }}{{ end }}'
