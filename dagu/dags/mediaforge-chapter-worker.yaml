@@ -9,3 +9,8 @@ max_active_runs: 1
 steps:
   - name: fix one book
     command: ssh dockerhost '~/projects/MediaForge/bin/worker-cron'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID} idle"

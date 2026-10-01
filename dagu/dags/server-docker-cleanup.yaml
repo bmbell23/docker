@@ -15,3 +15,8 @@ steps:
     command: ssh dockerhost 'test $(date +\%u) -eq 7 && docker image prune -a -f --filter until=168h || echo "not sunday, skipping"'
     depends:
       - routine cleanup
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"

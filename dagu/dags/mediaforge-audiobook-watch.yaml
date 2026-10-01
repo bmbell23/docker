@@ -8,3 +8,8 @@ max_active_runs: 1
 steps:
   - name: watch
     command: ssh dockerhost 'cd ~/projects/MediaForge && ./bin/audiobook watch'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID} idle"
