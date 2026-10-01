@@ -13,9 +13,12 @@
 #               Never stash, reset or discard.
 #   3. tidy     remove worktrees of merged PRs: only clean ones whose tip is the merged head.
 #   4. deploy   if the repo has an executable ./deploy: tag its images :previous, run it.
+# Then, for all repos: announce   any compose container under a repo's path that is new or
+#               recreated since the last run (a deploy, however it was done; docker#47).
 #
 # State for the Dashboard: logs/deploy/state.json (format in thread 016). Posts to #infra
 # as Biscuit on changes only: a deploy, a version, a repo going red or green again.
+# Red alerts and deploys @mention Brandon.
 #
 #   reconcile.sh [--dry-run] [--sweep] [--only <name>]
 #     --dry-run  say what would happen; push, merge, deploy, remove and post nothing
@@ -228,7 +231,7 @@ reconcile_one() {
     if [ "$rc" = 0 ]; then
         deployed="${head:0:7}"
         log "deployed v$v"
-        post "Deployed \`$name\` **v$v** (${head:0:7})."
+        # no post here: announce_deploys says it (with @brandon) once the containers are recreated
         record ok "deployed v$v" "$lg" "$rb"
     else
         settle failed "\`./deploy\` exited $rc for v$v. Rollback images: ${rb:-none}. Log: \`$lg\`
@@ -236,6 +239,33 @@ reconcile_one() {
 $(tail -n 8 "$lg")
 \`\`\`" "$lg" "$rb"
     fi
+}
+
+announce_deploys() {   # docker#47: most deploys are a hand/agent `docker compose up`, not ./deploy
+    local seen="$OUT/containers.json" cur first=0 repo rpath v sha names
+    [ -s "$seen" ] && jq -e 'type == "object"' "$seen" >/dev/null 2>&1 || first=1
+    # name \t compose working_dir \t Created (changes only on create/recreate, not a crash restart)
+    cur=$(docker ps -q | xargs -r docker inspect -f \
+            '{{.Name}}{{"\t"}}{{index .Config.Labels "com.docker.compose.project.working_dir"}}{{"\t"}}{{.Created}}' \
+          | sed 's|^/||' | awk -F'\t' '$2 != ""') || return 0
+    [ -n "$cur" ] || return 0
+    if [ "$first" = 0 ]; then
+        while IFS=$'\t' read -r -u 4 repo rpath _; do
+            [ -z "$only" ] || [ "$only" = "$repo" ] || continue
+            names=$(awk -F'\t' -v p="$rpath" '$2 == p || index($2, p "/") == 1 {print $1 "\t" $3}' <<<"$cur" |
+                    while IFS=$'\t' read -r c t; do
+                        [ "$(jq -r --arg c "$c" '.[$c] // empty' "$seen")" = "$t" ] || echo "$c"
+                    done | sort | paste -sd, - | sed 's/,/, /g')
+            [ -n "$names" ] || continue
+            v=$(cat "$rpath/version.txt" 2>/dev/null | tr -d '[:space:]')
+            sha=$(git -C "$rpath" rev-parse --short=7 HEAD 2>/dev/null)
+            post "@brandon Deployed \`$repo\`${v:+ **v$v**}${sha:+ ($sha)}: $names"
+        done 4<<<"$rows"
+    fi
+    [ "$dry" = 1 ] && return 0
+    awk -F'\t' '{print $1 "\t" $3}' <<<"$cur" |
+        jq -R 'split("\t") | {(.[0]): .[1]}' | jq -s --slurpfile old <(cat "$seen" 2>/dev/null || echo '{}') \
+            '($old[0] // {}) + add' > "$seen.tmp" && mv "$seen.tmp" "$seen"
 }
 
 rows=$(python3 -c '
@@ -250,3 +280,4 @@ while IFS=$'\t' read -r -u 3 name path enabled do_deploy do_version; do
     auto=false
     ( reconcile_one ) || echo "[$name] reconcile crashed (exit $?)"
 done 3<<<"$rows"
+announce_deploys
