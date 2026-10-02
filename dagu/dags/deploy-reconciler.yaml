@@ -20,6 +20,12 @@ steps:
     command: ssh dockerhost '~/projects/docker/scripts/preview-cleanup.sh'
     depends:
       - reconcile
+  # docker#80: every open PR across bmbell23 → logs/deploy/open_prs.json for the
+  # Dashboard (Dashboard#44). Last, so a merge this pass is already off the list.
+  - name: open prs
+    command: ssh dockerhost '~/projects/docker/scripts/open-prs.sh'
+    depends:
+      - preview cleanup
 handler_on:
   failure:
     command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
