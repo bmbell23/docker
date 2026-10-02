@@ -5,6 +5,7 @@
 # all three of us sign off, the old job and the dotfiles copy go in a separate PR.
 name: proxmox-config-backup-homelab
 description: Archive the Proxmox host's configuration nightly (Tier 3, /opt/homelab copy, shadow run)
+tags: [backup]
 schedule: "10 2 * * *"
 max_active_runs: 1
 steps:

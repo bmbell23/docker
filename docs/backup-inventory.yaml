@@ -5,7 +5,7 @@
 # Per entry:
 #   priority  P0 (irreplaceable) .. P4 (don't care); null = Brandon hasn't set it
 #   size      du -sh on dockerhost, 2026-09-30, unless noted
-#   primary / secondary / offsite:
+#   primary / secondary / tertiary / offsite:
 #     dest      where the copy lands, or none
 #     method    rsync | restic | vzdump | pbs | tar | dump | git | none
 #     dag       Dagu DAG name (dagu/dags/<dag>.yaml); null when Dagu doesn't run it
@@ -14,6 +14,10 @@
 #     state     ok | planned | none | partial
 #     ref       ticket/PR when state is planned
 #   why       the reason, especially for "none"
+#
+# Every Dagu DAG tagged `backup` must appear here as a dag (a copy, a restore_test or a
+# drive), and every dag named here must exist: scripts/check-backup-inventory.sh checks
+# both ways. A new backup DAG = `tags: [backup]` + its entry here, in the same PR.
 #
 # Places: boston = /mnt/boston (8 TB HDD, the live data). allston = /mnt/allston/boston-copy
 # on proxmox (USB, plain mirror, no history, 89% full). beacon / brighton / fenway = pve01's
@@ -26,12 +30,13 @@ entries:
     size: 26G
     primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
     secondary: {dest: pve01 beacon, method: restic, dag: pve01-documents-restic, scheduler: dagu, schedule: "0 3 * * *", state: ok, ref: "first green run 2026-10-01 14:12, snapshot 08b103d7"}
+    tertiary:  {dest: external, method: rsync, dag: proxmox-external-sync, scheduler: dagu, schedule: "0 4 * * *", state: ok, ref: "docker#16; green 2026-10-02 04:00"}
     restore_test: {dag: pve01-documents-restore-test, schedule: "0 4 * * 0", state: ok, ref: "manual RESTORE-OK of 08b103d7 2026-10-01 20:15 (proxmox#36); first scheduled run Sun 2026-10-04"}
     offsite: none
     why: >-
       Restic keeps every snapshot (no forget/prune policy yet). Its password is in
-      /root/.restic/documents.pass on pve01; whether it's in Vaultwarden is unverified. Stale
-      copy on /mnt/external from 2026-03-30. Includes trilium-backups/ and museforge-backups/.
+      /root/.restic/documents.pass on pve01; whether it's in Vaultwarden is unverified.
+      Includes trilium-backups/, museforge-backups/, wordforge-backups/ and agentbus-backups/.
 
   - name: audiobooks
     source: /mnt/boston/media/audiobooks
@@ -84,10 +89,11 @@ entries:
     size: 560G
     primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
     secondary: {dest: pve01 brighton, method: rsync, dag: pve01-pictures-copy, scheduler: dagu, schedule: "30 3 * * *", state: ok, ref: "first full copy 2026-10-01 23:36 (rsync exit 0, 1.16 TB); scheduled run green 2026-10-02 03:34"}
+    tertiary:  {dest: external, method: rsync, dag: proxmox-external-sync, scheduler: dagu, schedule: "0 4 * * *", state: ok, ref: "docker#16; green 2026-10-02 04:00"}
     offsite: none
     why: >-
       Brighton runs rsync without --delete: a photo deleted on boston survives there, an
-      edited one is overwritten (no versions). Stale copy on /mnt/external from 2026-03-30.
+      edited one is overwritten (no versions). External: same, no --delete.
 
   - name: images
     source: /mnt/boston/media/pictures/library/images
@@ -95,6 +101,7 @@ entries:
     size: 80G
     primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
     secondary: {dest: pve01 brighton, method: rsync, dag: pve01-pictures-copy, scheduler: dagu, schedule: "30 3 * * *", state: ok, ref: "first full copy 2026-10-01 23:36 (rsync exit 0, 1.16 TB); scheduled run green 2026-10-02 03:34"}
+    tertiary:  {dest: external, method: rsync, dag: proxmox-external-sync, scheduler: dagu, schedule: "0 4 * * *", state: ok, ref: "docker#16; green 2026-10-02 04:00"}
     offsite: none
     why: Rides along with pictures/. Same as photos.
 
@@ -185,13 +192,25 @@ entries:
     source: ~/projects/WordForge/data/writing_platform.db (VM 101 root disk)
     priority: null
     size: 46K gzipped (2026-09-30)
-    primary:   {dest: boston documents/wordforge-backups, method: dump, dag: wordforge-backup, scheduler: dagu, schedule: "35 2 * * *", state: planned, ref: "docker#55, WordForge#4 PR#5"}
-    secondary: {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: planned, ref: "rides in documents"}
+    primary:   {dest: boston documents/wordforge-backups, method: dump, dag: wordforge-backup, scheduler: dagu, schedule: "35 2 * * *", state: ok, ref: "green 2026-10-02 02:35"}
+    secondary: {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok, ref: "rides in documents"}
     offsite: none
     why: >-
       Brandon's stories, one SQLite file. Before this only the weekly VM image held it. The
       dumps land inside documents/, so the next night's allston rsync (and pve01 restic, once
       live) carry them. Keeps 30, skips unchanged nights.
+
+  - name: museforge-prompts
+    source: ~/projects/MuseForge/prompts (VM 101 root disk, kept out of git on purpose)
+    priority: null
+    size: not measured
+    primary:   {dest: boston documents/museforge-backups, method: tar, dag: museforge-backup, scheduler: dagu, schedule: "30 2 * * *", state: ok, ref: "green 2026-10-02 02:30"}
+    secondary: {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok, ref: "rides in documents"}
+    offsite: none
+    why: >-
+      Brandon's private prompts, deliberately untracked (docker#10, MuseForge#17). Archives,
+      verifies, skips unchanged, keeps 30. Lands in documents/, so pve01 restic and the
+      external drive carry it too.
 
   - name: mattermost
     source: agentbus_postgres (Mattermost DB) + Mattermost attachments, ~/projects/agent-bus (VM 101 root disk)
@@ -256,7 +275,7 @@ entries:
     priority: null
     size: 32G
     primary:   {dest: boston, method: tar, dag: proxmox-config-backup, scheduler: dagu, schedule: "0 2 * * *", state: partial}
-    secondary: {state: none}
+    secondary: {dest: boston proxmox-config-backups-homelab, method: tar, dag: proxmox-config-backup-homelab, scheduler: dagu, schedule: "10 2 * * *", state: planned, ref: "docker#21 shadow run on the same disk; replaces primary once signed off"}
     offsite: none
     why: >-
       Runs as brandon, so no /etc/pve/priv. Last complete archive 2026-09-29 13:29 (root run),
@@ -293,19 +312,15 @@ entries:
     offsite: none
     why: Pre-plan data, uncatalogued. Peter inventories it once his restic verb works.
 
-# Not a destination for anything today, kept here so the gap is on the record.
 drives:
   - name: external
     path: /mnt/external (proxmox, WD Passport 2 TB); /mnt/remote/external on pve01
-    state: idle
-    last_written: 2026-03-30
-    used: 1.4T
-    free: 432G
-    holds: ~95% of photos and ~95% of documents, from March
-    missing: ~281G (all music, half the audiobooks, games in the new layout, Immich since March, 1.4G of documents)
-    proposed: >-
-      Offline 3rd copy. Monthly Dagu job proxmox-external-sync, rsync of Tier 1 without
-      videos, no --delete, skips if unplugged. Waiting on Brandon (agent-bus thread 012).
+    state: active
+    dag: proxmox-external-sync
+    holds: >-
+      Third copy of documents and pictures (minus Immich's regenerable encoded-video/ and
+      thumbs/), nightly at 04:00 (docker#16). Used/free is the last line of each run's log.
+      Not offsite: it lives in the same house.
     note: On pve01 it's mounted read-write without nofail (boston is ro,nofail); fstab fix is Brandon's.
 
 offsite: none  # parked by Brandon's call; no copy of anything survives the house

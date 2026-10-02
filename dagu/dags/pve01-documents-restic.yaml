@@ -6,6 +6,7 @@
 # so only one job reads boston at a time.
 name: pve01-documents-restic
 description: restic backup of boston documents to beacon on pve01
+tags: [backup]
 schedule: "0 3 * * *"
 max_active_runs: 1
 steps:

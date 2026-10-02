@@ -6,6 +6,7 @@
 # 03:30: after the other boston readers (01:00, 02:00, 02:10, 03:00).
 name: pve01-pictures-copy
 description: rsync all boston pictures to brighton on pve01
+tags: [backup]
 schedule: "30 3 * * *"
 max_active_runs: 1
 steps:

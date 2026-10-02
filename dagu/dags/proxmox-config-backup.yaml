@@ -5,6 +5,7 @@
 # Replaces (Proxmox crontab): 0 2 * * * ~/projects/dotfiles/scripts/proxmox-config-backup.sh
 name: proxmox-config-backup
 description: Archive the Proxmox host's configuration nightly
+tags: [backup]
 schedule: "0 2 * * *"
 max_active_runs: 1
 steps:

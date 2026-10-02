@@ -35,6 +35,13 @@ Pollers (`audiobook-watch`, `chapter-worker`, `align-worker`, `codeforge-notes-s
 something, so "nothing new" ticks stay quiet. A new DAG copies the handler block; add
 `idle` if it runs more often than hourly. State lives in `~/.local/state/dagu-alerts/`.
 
+## Backup DAGs
+A DAG that makes a backup copy carries `tags: [backup]`, and the same PR names it in
+`docs/backup-inventory.yaml` (a copy's `dag:`, a `restore_test` or a drive). The
+Dashboard's job list picks up every DAG file on its own; its Backup Overview reads the
+inventory, so an unlisted backup is invisible there. `scripts/check-backup-inventory.sh`
+fails on drift either way (docker#78).
+
 ## Still in crontab, deliberately
 `immich/watchdog.sh` (every 5 min) is **known broken** — it cannot write
 `/var/log/immich-watchdog.log`. Moving a broken job into a scheduler that will
