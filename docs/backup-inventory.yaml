@@ -11,7 +11,8 @@
 #     dag       Dagu DAG name (dagu/dags/<dag>.yaml); null when Dagu doesn't run it
 #     scheduler dagu | proxmox (jobs.cfg) | pbs | builtin | manual | none
 #     schedule  cron or plain words
-#     state     ok | planned | none | partial
+#     state     ok | planned | none | partial | shadow (runs on purpose, not a real copy yet:
+#               live status shown, never counted as working, never flagged as stale)
 #     ref       ticket/PR when state is planned
 #   why       the reason, especially for "none"
 #
@@ -275,7 +276,7 @@ entries:
     priority: null
     size: 32G
     primary:   {dest: boston, method: tar, dag: proxmox-config-backup, scheduler: dagu, schedule: "0 2 * * *", state: partial}
-    secondary: {dest: boston proxmox-config-backups-homelab, method: tar, dag: proxmox-config-backup-homelab, scheduler: dagu, schedule: "10 2 * * *", state: planned, ref: "docker#21 shadow run on the same disk; replaces primary once signed off"}
+    secondary: {dest: boston proxmox-config-backups-homelab, method: tar, dag: proxmox-config-backup-homelab, scheduler: dagu, schedule: "10 2 * * *", state: shadow, ref: "docker#21 shadow run on the same disk; replaces primary once signed off"}
     offsite: none
     why: >-
       Runs as brandon, so no /etc/pve/priv. Last complete archive 2026-09-29 13:29 (root run),
