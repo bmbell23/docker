@@ -34,13 +34,15 @@ fileshare (`share.bbell23.xyz`).
 
 ## 2. Port allocation
 
-Custom apps live in a sequential block starting at **8002**. Taken (live as of 2026-07-20; 8005 updated 2026-10-02). CodeForge is internal (host network, 8000):
+Custom apps live in a sequential block starting at **8002**. Taken (live as of 2026-10-02, from `docker ps`). CodeForge is internal (host network, 8000):
 
 ```
 8001 Dashboard (host network)   8002 WordForge      8003 ArtForge
 8004 LifeForge                  8005 MuseForge Studio (Tailscale IP only)
-8006 KidMedia                   8007 GreatReads old prod (retired)
+8006 FunForge                   8007 GreatReads old prod (retired)
 8008 PokeVault                  8009 MealForge      8010 NerdNews/booknews
+8011 Chess                      8012/8013 WebForge  8014 Dagu
+8015 Mattermost (agent-bus)     8016 Grafana
 8090/8091/8092 GreatReads web/retired-backend/ereader
 5007/5008 Libby prod/test       8098 Dictionary
 ```
@@ -49,9 +51,11 @@ Third-party stacks use upstream defaults: 2283 Immich, 8096 Jellyfin, 13378 ABS,
 8083/8084 Calibre, 8085 Trilium, 8222 Vaultwarden, 8880 Jenkins, 2285 qBittorrent,
 9117 Jackett, 8998 yt-dlp, 9999 Stash, 8080 RomM, 6595 Deemix.
 
-**Next free app port: 8011** (then 8012, 8013…). When you claim one:
+**Next free app port: 8017.** Don't trust this line blindly: check
+`ss -ltn | grep :<port>` before you claim one. **15000–19999 is reserved for PR
+previews** (prod port + 10000, §11): never claim an app port there. When you claim one:
 1. add it to the inventory table in `/home/brandon/projects/.augment-guidelines`,
-2. prefer host port == container port (`8011:8011`) — exceptions cause confusion.
+2. prefer host port == container port (`8017:8017`) — exceptions cause confusion.
 
 ## 3. House stack (the default; deviate only with a reason)
 
@@ -201,39 +205,52 @@ Also ship `static/manifest.json` (PWA, `display: standalone`) — free install p
 
 ## 8. Dashboard registration (two places, both required)
 
-The Dashboard (`/home/brandon/projects/Dashboard`, Flask, host-network, port 8001) has no config file — registration is code:
+Daisy owns the Dashboard (`/home/brandon/projects/Dashboard`, Flask, host network,
+port 8001). The new service's agent doesn't edit it: she sends Daisy the entry below
+(@daisy, with the exact JSON) and Daisy lands it on her branch.
 
-1. **Card** in `Dashboard/static/index.html`: copy an existing `<div class="service-card">` block into the right category — set `href="http://100.69.184.113:<port>"`, Font Awesome icon, name, description, `:<port>` footer, and the `restartContainer('<id>')` / `recreateContainer('<id>')` ids.
-2. **Backend map** in `Dashboard/app.py` `CONTAINERS` dict (~line 63):
-   ```python
-   '<id>': {'name': '<container_name>', 'service': '<compose service>',
-            'compose_dir': '/home/brandon/projects/<App>'},
+1. **Service entry** in `Dashboard/static/services.json` (`services` list; the page
+   renders from it, its `_comment` documents every key):
+   ```json
+   {"key": "<app>", "name": "<App>", "icon": "fas fa-<icon>",
+    "description": "<one line>", "url": "http://100.69.184.113:<port>",
+    "url_label": ":<port>", "category": "Projects", "owner": "<agent>",
+    "repo": "bmbell23/<App>", "controls": "container",
+    "preview_names": ["<other preview project label>"]}
    ```
-   (Relative `compose_dir` resolves under `projects/docker/`; use absolute for apps in their own repo. Optional `compose_file` key overrides the default.)
-3. Redeploy: `cd /home/brandon/projects/Dashboard && docker compose -f compose.yml up -d --build --force-recreate dashboard`
+   - `repo` is **required** for previews: the preview sweeper (§11) looks the PR up
+     in this repo. No `repo`, no automatic teardown.
+   - `preview_names` only if your previews' `dashboard.preview.project` label isn't
+     the `key` (MuseForge Studio: key `museforge-studio`, previews labelled `museforge`).
+   - `controls: "container"` gives the row Restart/Recreate; it needs step 2.
+2. **Container map** in `Dashboard/app.py` `CONTAINERS`, same key:
+   ```python
+   '<app>': {'name': '<container_name>', 'service': '<compose service>',
+             'compose_dir': '/home/brandon/projects/<App>'},
+   ```
+   (Relative `compose_dir` resolves under `projects/docker/`; use absolute for apps in
+   their own repo. Optional `compose_file` key overrides the default.)
+
+Daisy's merge redeploys the Dashboard; nothing to do on your side.
 
 ## 9. Work tracking: GitHub repo + Project board (required for every app)
 
-Every app gets, from day one (GreatReads pioneered this; Chess follows it):
-1. **A GitHub repo** `bmbell23/<App>` — code, versioned via `version.txt` + `gvc`.
+Every app gets, from day one:
+1. **A GitHub repo** `bmbell23/<App>`, with `version.txt` (`0.1.0`) at the root.
 2. **A GitHub Project (user-level) board** with Status columns, in order:
    **Scoping → Ready to Implement → In progress → In Review → Done**
    (rename the default `Backlog/Ready/In progress/In review/Done` options — the
    board must match this flow exactly).
 3. **`story` + `bug` labels** in the repo.
 
-The workflow rules (full text in `GreatReads/CLAUDE.md` — copy the adapted version
-from `Chess/CLAUDE.md` into each new repo's `CLAUDE.md`):
-- **GitHub Issues are the source of truth** — plans/scoping/status live in issues,
-  never in local planning `.md` files.
-- Every issue tagged `STORY:`/`BUG:` in three synced places (title prefix, first
-  line of body, label).
-- **No work without a ticket**; new tickets land in Scoping (open questions → ask
-  the user) or Ready to Implement (confidently scoped); never skip columns.
-- **ONE active ticket** in In progress + In Review at a time; any code change moves
-  the ticket to In Review and stays **uncommitted** until the user blesses it Done.
-- **Gated actions — always ask first:** DB writes/migrations, container/APK
-  rebuilds, and commits/pushes.
+The workflow (full text in agent-bus; the repo's `CLAUDE.md` points at it):
+- **GitHub Issues are the source of truth**; no local planning `.md` files.
+  Every issue tagged `STORY:`/`BUG:` (title prefix, first line of body, label).
+- **No work without a ticket.** One ticket = one branch = one worktree = one PR
+  (`agent-bus/bin/task start <issue#> <slug>`). The main clone stays on `main`.
+- The PR body starts with `Closes #<issue#>`; the ticket moves to In Review.
+- **Brandon's merge is the blessing.** `bin/ship-pr` (or a merge in the GitHub UI)
+  → the reconciler versions, syncs and deploys (§11). Nobody runs `gvc` on main by hand.
 
 ## 10. Agent guidance for the new repo
 
@@ -250,15 +267,72 @@ Non-negotiables (from the Jan 7 2026 incident — reboot → Postgres corruption
 - Diagnose before acting; the correct fix is usually small (the incident's root cause was a full disk)
 - **Verification honesty:** never claim something works without showing evidence (test output, curl response, diff)
 
-## 11. New-app checklist
+## 11. Merge → deploy → preview → teardown (the automated part)
 
-1. [ ] Pick next free port (§2); record it in `.augment-guidelines` inventory
-2. [ ] Scaffold repo from §4; `pyproject.toml`, `version.txt` = `0.1.0`, `.env.example`
-3. [ ] Dockerfile + compose from §5; `/health` endpoint
-4. [ ] `docker compose up -d --build`; verify `curl localhost:<port>/health`
-5. [ ] Verify Tailscale reachability from another device; fix DNAT if needed (§6)
-6. [ ] Register on Dashboard (§8)
-7. [ ] GitHub repo `bmbell23/<App>` + Project board with the five-column flow, `story`/`bug` labels (§9); first ticket before first code
-8. [ ] `CLAUDE.md` incl. working rules (§9-10); first commit via `gvc`
-8. [ ] Backup cron once there's real data
-10. [ ] Android wrapper when the web app is worth wrapping (§7)
+All of this runs every 2 min from `dagu/dags/deploy-reconciler.yaml`. A new app opts in
+with two things; everything else is naming discipline.
+
+**Deploy on merge.** Add the repo to `dagu/deploy-repos.yaml` (a docker PR; ask
+@dakota) and commit an executable `./deploy` at the app's repo root. On every merge the
+reconciler (`scripts/reconcile.sh`) versions main if needed, fast-forwards the main
+clone, removes the merged PR's worktree, tags the current images `:previous` and runs
+`./deploy`. Biscuit announces it in #infra. A good `./deploy` (see
+`MuseForge/deploy`): `docker compose up -d --build <service>`, then poll `/health`
+until 200 or fail loudly. Without `./deploy` the clone still syncs but nothing
+redeploys.
+
+**Previews** (rules: agent-bus `README.md`, "Preview containers"). For a PR Brandon
+should click through:
+
+| Thing | Value |
+|---|---|
+| Compose project **and** container name | `<project>_pr<N>`, lowercase |
+| `N` | **the PR number, not the issue number** |
+| Host port | prod + 10000, bound `0.0.0.0` (`8005 → 18005`) |
+| Label `dashboard.preview.project` | the services.json `key`, or one of its `preview_names` |
+| Label `dashboard.preview.pr` | `N` again, same PR number |
+| Label `dashboard.preview.port` / `.path` | host port / URL path (default `/`) |
+| Label `dashboard.preview.repo` | optional `owner/name`, overrides services.json `repo` |
+| Compose file | scratch dir `/tmp/agentbus/<agent>/preview-pr<N>/`, never in the repo |
+| Data | a copy, never prod; schedulers off |
+
+The PR number doesn't exist until `gh pr create` returns it, so the order is:
+**open the PR → read its number → bring the preview up as `<project>_pr<N>`.** For a
+second round on the same PR, recreate the same project; never reuse another PR's name.
+
+**Teardown is automatic** (`scripts/preview-cleanup.sh`): once PR `N` is MERGED or
+CLOSED in the resolved repo, the sweeper removes the preview's containers, networks and
+its own `<project>_pr<N>-*` images, and Biscuit posts "Removed preview …". It touches a
+container only if **all** of these hold, and otherwise leaves it running and alerts
+Brandon once:
+- both `dashboard.preview.project` and `dashboard.preview.pr` labels are set,
+- the name is `<something>_pr<N>` with the **same N** as the label,
+- the compose project equals the container name,
+- a repo resolves (label, or the services.json entry's `repo`).
+
+*Learned 2026-10-02:* `museforge_pr85` was labelled `dashboard.preview.pr=99`. 85 was
+the issue; 99 was the PR. PR #99 merged, the name and label disagreed, and the sweeper
+(correctly) refused to remove it. Check yours with:
+```bash
+docker ps -a --filter label=dashboard.preview.pr \
+  --format '{{.Names}} pr={{.Label "dashboard.preview.pr"}} proj={{.Label "com.docker.compose.project"}}'
+~/projects/docker/scripts/preview-cleanup.sh --dry-run   # silent = nothing to do or already alerted
+```
+
+## 12. New-app checklist (hand this to the new agent)
+
+Who does what: the new agent owns her repo; Bianca adds her to the office (roster,
+persona, `agent-bus` rules); Daisy adds the Dashboard row; Dakota adds the
+reconciler entry and owns this doc. Brandon approves each PR.
+
+1. [ ] Pick the next free port (§2), check it with `ss -ltn`, record it in `.augment-guidelines`
+2. [ ] GitHub repo `bmbell23/<App>` + Project board + `story`/`bug` labels (§9); first ticket before first code
+3. [ ] Scaffold from §4; `version.txt` = `0.1.0`, `.env.example`, `CLAUDE.md` (§10)
+4. [ ] Dockerfile + compose from §5 with a `/health` endpoint
+5. [ ] First deploy `docker compose up -d --build`; `curl localhost:<port>/health`, then from another device over Tailscale; fix DNAT if needed (§6)
+6. [ ] Executable `./deploy` in the repo (§11); ask Dakota to add the repo to `dagu/deploy-repos.yaml`
+7. [ ] Ask Daisy for the services.json entry **with `repo`** + `CONTAINERS` entry (§8)
+8. [ ] Ask Bianca to put the agent on the roster
+9. [ ] First preview: PR first, then `<project>_pr<PR#>` with all four labels (§11); confirm it shows on the Dashboard; after merge, confirm Biscuit posts "Removed preview"
+10. [ ] Backup cron once there's real data (§6); tell Peter if it belongs in restic
+11. [ ] Android wrapper when the web app is worth wrapping (§7)
