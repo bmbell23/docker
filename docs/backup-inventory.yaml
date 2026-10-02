@@ -240,13 +240,16 @@ entries:
   - name: vaultwarden
     source: ~/projects/docker/vaultwarden/data (VM 101 root disk)
     priority: null
-    size: not measured
-    primary:   {dest: boston proxmox-backups, method: vzdump, dag: null, scheduler: proxmox, schedule: "Sun 21:00", state: ok}
-    secondary: {state: none}
+    size: 328K archive (2026-10-02)
+    primary:   {dest: boston documents/vaultwarden-backups, method: dump, dag: vaultwarden-backup, scheduler: dagu, schedule: "15 0 * * *", state: ok, ref: "docker#40; first run + restore test 2026-10-02 (integrity ok, 1 user, 619 items)"}
+    secondary: {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok, ref: "rides in documents; pve01 restic 03:00 too"}
     offsite: none
     why: >-
-      Only inside the weekly VM image. scripts/backup/vaultwarden-backup.sh exists but no DAG
-      runs it (docker#40). Holds the passwords for every other backup.
+      Holds the passwords for every other backup, and the key to the agent-bus secrets archive
+      (agent-bus#145). Uses vaultwarden's own `backup` (online-safe) + rsa_key.pem; keeps 30,
+      skips unchanged. The weekly VM image still has a copy as well. boston is CIFS with
+      file_mode 0775, so the archive isn't private on the share: vault items are client-side
+      encrypted, but rsa_key.pem isn't.
 
   - name: docker-app-data
     source: each repo's ./data, /mnt/docker (VM 101 disks scsi0 104G + scsi1 200G)
