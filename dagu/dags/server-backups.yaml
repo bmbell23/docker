@@ -12,6 +12,7 @@
 # was redundant with that.
 name: server-backups
 description: Databases then GreatReads - nightly, in sequence
+tags: [backup]
 schedule: "0 2 * * *"
 queue: heavy
 max_active_runs: 1

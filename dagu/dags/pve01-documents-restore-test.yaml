@@ -4,6 +4,7 @@
 # Sunday 04:00: after that night's 03:00 backup, well before the Sun 21:00 vzdump.
 name: pve01-documents-restore-test
 description: Weekly restic restore test of documents on pve01
+tags: [backup]
 schedule: "0 4 * * 0"
 max_active_runs: 1
 steps:

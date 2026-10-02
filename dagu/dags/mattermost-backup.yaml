@@ -4,6 +4,7 @@
 # 00:30: before the 01:00 Proxmox rsync, so allston gets the same night's copy.
 name: mattermost-backup
 description: Back up Mattermost (DB + attachments) nightly
+tags: [backup]
 schedule: "30 0 * * *"
 max_active_runs: 1
 steps:

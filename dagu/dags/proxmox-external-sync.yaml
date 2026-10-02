@@ -6,6 +6,7 @@
 # 04:00: after proxmox-backup-rsync (01:00) so the two USB drives aren't both busy.
 name: proxmox-external-sync
 description: Copy boston documents + pictures to /mnt/external on Proxmox
+tags: [backup]
 schedule: "0 4 * * *"
 max_active_runs: 1
 steps:

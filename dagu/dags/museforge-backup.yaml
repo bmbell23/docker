@@ -7,6 +7,7 @@
 # on its own. Not in the heavy queue: kilobytes of text.
 name: museforge-backup
 description: Archive MuseForge prompts/ nightly
+tags: [backup]
 schedule: "30 2 * * *"
 max_active_runs: 1
 steps:

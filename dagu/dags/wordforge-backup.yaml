@@ -6,6 +6,7 @@
 # 02:35: after museforge-backup (02:30), before the 03:00 boston readers.
 name: wordforge-backup
 description: Back up WordForge's SQLite database nightly
+tags: [backup]
 schedule: "35 2 * * *"
 max_active_runs: 1
 steps:
