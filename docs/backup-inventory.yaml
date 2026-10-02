@@ -25,8 +25,8 @@ entries:
     priority: P0
     size: 26G
     primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
-    secondary: {dest: pve01 beacon, method: restic, dag: pve01-documents-restic, scheduler: dagu, schedule: "0 3 * * *", state: planned, ref: "docker#31 PR#32"}
-    restore_test: {dag: pve01-documents-restore-test, schedule: "0 4 * * 0", state: planned, ref: "PR#32"}
+    secondary: {dest: pve01 beacon, method: restic, dag: pve01-documents-restic, scheduler: dagu, schedule: "0 3 * * *", state: ok, ref: "first green run 2026-10-01 14:12, snapshot 08b103d7"}
+    restore_test: {dag: pve01-documents-restore-test, schedule: "0 4 * * 0", state: ok, ref: "manual RESTORE-OK of 08b103d7 2026-10-01 20:15 (proxmox#36); first scheduled run Sun 2026-10-04"}
     offsite: none
     why: >-
       Restic keeps every snapshot (no forget/prune policy yet). Its password is in
@@ -209,7 +209,7 @@ entries:
     priority: null
     size: 304G image (99.2G archive)
     primary:   {dest: boston proxmox-backups, method: vzdump, dag: null, scheduler: proxmox, schedule: "Sun 21:00, keep 3", state: ok}
-    secondary: {dest: pve01 fenway, method: pbs, dag: null, scheduler: manual, schedule: one run, state: planned, ref: "proxmox#11 runbook §6"}
+    secondary: {dest: pve01 fenway, method: pbs, dag: null, scheduler: manual, schedule: one run, state: planned, ref: "proxmox#34"}
     offsite: none
     why: >-
       Whole-VM image only, weekly (both disks verified in the 2026-09-27 vzdump log). Per-app
@@ -220,7 +220,7 @@ entries:
     priority: null
     size: 294G
     primary:   {dest: boston, method: vzdump, dag: null, scheduler: proxmox, schedule: "Sun 21:00, keep 3", state: ok}
-    secondary: {dest: pve01 fenway, method: pbs, dag: null, scheduler: manual, schedule: one run, state: planned, ref: "proxmox#11 runbook §6"}
+    secondary: {dest: pve01 fenway, method: pbs, dag: null, scheduler: manual, schedule: one run, state: planned, ref: "proxmox#34"}
     offsite: none
     why: >-
       Not in Dagu on purpose: Dagu runs inside VM 101. Same disk as the data. Fenway is empty
