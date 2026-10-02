@@ -87,7 +87,8 @@ for p in "${pending[@]}"; do fail "$p"; done
 
 # 3. Every published host port answers on localhost.
 # Entries are hostport:containerport/proto; only TCP can be probed (1900/udp etc. can't).
-cut -f5 "$SNAP/containers.tsv" | tr ',' '\n' | grep -E '/tcp$' | cut -d: -f1 | sort -un > "$SNAP/.ports"
+# Only restartable containers: a restart-policy-"no" one (a PR preview) isn't expected back.
+awk -F'\t' '$2 ~ /always|unless-stopped|on-failure/' "$SNAP/containers.tsv" | cut -f5 | tr ',' '\n' | grep -E '/tcp$' | cut -d: -f1 | sort -un > "$SNAP/.ports"
 bad=0
 while read -r port; do
     tcp_open "$port" && continue
@@ -114,7 +115,8 @@ systemctl --user is-active --quiet agent-bus-router && ok "agent-bus-router acti
 tcp_open 8015 && ok "Mattermost :8015 answers" || fail "Mattermost :8015 does not answer"
 
 # 6. Units that were enabled are still enabled.
-missing=$(comm -23 "$SNAP/units-system.txt" <(systemctl list-unit-files --state=enabled --no-legend | awk '{print $1}' | sort))
+missing=$(comm -23 "$SNAP/units-system.txt" <(systemctl list-unit-files --state=enabled --no-legend | awk '{print $1}' | sort) \
+    | grep -vE '^snap-.*\.mount$')   # snap revision mounts rotate on every snap refresh
 [ -n "$missing" ] && fail "system units no longer enabled: $(echo "$missing" | tr '\n' ' ')"
 
 echo
