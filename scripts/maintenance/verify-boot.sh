@@ -6,7 +6,8 @@
 #   Runs by itself once per boot via systemd/verify-boot.service (--notify @brandon).
 #   WAIT=300 scripts/maintenance/verify-boot.sh         retry window for slow starters (s)
 #
-# One line per failure; exit 0 only if everything matches.
+# One line per failure; exit 0 only if everything matches (1 = problems, 2 = no snapshot,
+# 3 = clean but the --notify post never got through after retries).
 
 set -uo pipefail
 
@@ -14,16 +15,27 @@ REPO=/home/brandon/projects/docker
 NOTIFY=""
 if [ "${1:-}" = "--notify" ]; then NOTIFY="$2"; shift 2; fi
 SNAP="${1:-$REPO/logs/shutdown-latest}"
+NOTIFY_FAILED=0
 notify() {
     [ -n "$NOTIFY" ] || return 0
-    # Posts as @biscuit (the script bot). bin/say waits up to SAY_WAIT s for Mattermost;
-    # a failure is logged, never silently dropped (docker#35: the first boot DM was lost).
-    local err
-    if ! err=$(printf '%s\n' "$*" | /home/brandon/projects/agent-bus/bin/say biscuit "$NOTIFY" - 2>&1 >/dev/null); then
-        echo "NOTIFY FAILED (Mattermost post to $NOTIFY): ${err:-no reason given}" >&2
-        logger -t "$(basename "$0")" "notify to $NOTIFY failed: ${err:-no reason given}" 2>/dev/null || true
-    fi
-    return 0
+    # Posts as @biscuit (the script bot). At boot the Mattermost router may not be up yet,
+    # so retry with backoff (docker#35: the first boot DM was lost). Defaults: 5 attempts,
+    # each waiting up to NOTIFY_SAY_WAIT s inside bin/say, 20/40/80/160 s apart: ~7.5 min max.
+    # Every failure is logged (stderr + journal); if it never gets through, NOTIFY_FAILED=1
+    # and the script exits non-zero.
+    local err attempt=1 max="${NOTIFY_TRIES:-5}" delay="${NOTIFY_BACKOFF:-20}" msg
+    msg=$(printf '%s\n' "$*")
+    while :; do
+        if err=$(printf '%s\n' "$msg" | SAY_WAIT="${NOTIFY_SAY_WAIT:-30}" /home/brandon/projects/agent-bus/bin/say biscuit "$NOTIFY" - 2>&1 >/dev/null); then
+            return 0
+        fi
+        echo "NOTIFY FAILED (attempt $attempt/$max, Mattermost post to $NOTIFY): ${err:-no reason given}" >&2
+        logger -t "$(basename "$0")" "notify to $NOTIFY failed (attempt $attempt/$max): ${err:-no reason given}" 2>/dev/null || true
+        [ "$attempt" -ge "$max" ] && break
+        sleep "$delay"; delay=$(( delay * 2 )); attempt=$(( attempt + 1 ))
+    done
+    NOTIFY_FAILED=1
+    return 1
 }
 WAIT="${WAIT:-300}"
 [ -f "$SNAP/containers.tsv" ] || { echo "FAIL: no snapshot at $SNAP (run prep-shutdown.sh before shutting down)"; exit 2; }
@@ -48,7 +60,7 @@ done < "$SNAP/mounts.txt"
 if [ "${#fails[@]}" -gt 0 ]; then
     echo "STOP: storage is wrong. Containers that bind-mount it may be running on empty local dirs."
     echo "Do not judge the containers yet; fix the mount, then restart the affected containers."
-    notify "verify-boot: STORAGE IS WRONG after boot. $(printf '%s; ' "${fails[@]}") Containers that use it may be running on empty folders."
+    notify "verify-boot: STORAGE IS WRONG after boot. $(printf '%s; ' "${fails[@]}") Containers that use it may be running on empty folders." || true
     exit 1
 fi
 
@@ -108,8 +120,10 @@ missing=$(comm -23 "$SNAP/units-system.txt" <(systemctl list-unit-files --state=
 echo
 if [ "${#fails[@]}" -gt 0 ]; then
     echo "NOT CLEAN: ${#fails[@]} problem(s) above."
-    notify "verify-boot: NOT CLEAN, ${#fails[@]} problem(s): $(printf '%s; ' "${fails[@]}")"
+    notify "verify-boot: NOT CLEAN, ${#fails[@]} problem(s): $(printf '%s; ' "${fails[@]}")" || true
     exit 1
 fi
 echo "CLEAN BOOT: everything in $SNAP is back."
 notify "verify-boot: CLEAN BOOT. Everything from $(basename "$(readlink -f "$SNAP")") is back."
+[ "$NOTIFY_FAILED" = 1 ] && { echo "Boot is clean but the notification never got through." >&2; exit 3; }
+exit 0
