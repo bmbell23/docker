@@ -34,11 +34,11 @@ fileshare (`share.bbell23.xyz`).
 
 ## 2. Port allocation
 
-Custom apps live in a sequential block starting at **8002**. Taken (live as of 2026-07-20):
+Custom apps live in a sequential block starting at **8002**. Taken (live as of 2026-07-20; 8005 updated 2026-10-02). CodeForge is internal (host network, 8000):
 
 ```
 8001 Dashboard (host network)   8002 WordForge      8003 ArtForge
-8004 LifeForge                  8005 CodeForge (host net, internal)
+8004 LifeForge                  8005 MuseForge Studio (Tailscale IP only)
 8006 KidMedia                   8007 GreatReads old prod (retired)
 8008 PokeVault                  8009 MealForge      8010 NerdNews/booknews
 8090/8091/8092 GreatReads web/retired-backend/ereader
@@ -167,8 +167,12 @@ Docker writes your app's rules itself; **don't hardcode container IPs anywhere**
 The old `fix-all-docker-iptables.sh` did, and re-added 18 dead rules at every boot
 (docker#34). `docker-post-boot.service` runs `clean-stale-dnat.sh` at boot.
 
-**Testing note:** from the server itself, `curl http://localhost:<port>` — never curl
-the Tailscale IP from the server (always times out, exit 28).
+**Testing note:** from the server itself, curl the address users open:
+`http://100.69.184.113:<port>` answers from the server now (2026-10-02: :8002, :2283,
+:8015 and :8001 in under 2 ms). The old "always times out, exit 28" no longer holds.
+`localhost` isn't always enough: an app bound to the Tailscale address only (MuseForge
+Studio, 8005) doesn't answer on it, and `127.0.0.1:2283` (Immich) times out while the
+LAN and Tailscale addresses return 200.
 
 Backups: cron a SQLite online backup (GreatReads `greatreads/scripts/backup-db.sh`
 pattern: `.backup` + `integrity_check`, keep 14, `30 2 * * *`).
