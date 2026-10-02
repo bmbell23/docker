@@ -112,6 +112,18 @@ docker compose up -d
 - You need a Deezer account (free works fine)
 - Downloads are for personal use only
 
+## 🔑 Renewing the Deezer login (ARL)
+
+The ARL cookie expires every few months. The `deemix-arl-check` Dagu DAG checks it daily
+at 09:00 and pings #dagu when it dies. To renew:
+
+1. Log in at deezer.com in a browser and copy the `arl` cookie (dev tools, Application, Cookies).
+2. On the server run `~/projects/docker/scripts/deemix-set-arl.sh` and paste it (hidden prompt).
+
+It validates the new ARL with Deezer first, then updates `config/login.json` (keeping
+`login.json.bak`) and restarts deemix. `deemix-arl-check.sh` checks the current one by hand;
+`deemix-set-arl.sh --check-only` validates a candidate without writing. (docker#42)
+
 ## 📚 More Information
 
 - [Deemix GitHub](https://github.com/bambanah/deemix)

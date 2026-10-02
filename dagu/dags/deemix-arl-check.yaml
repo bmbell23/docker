@@ -1,0 +1,22 @@
+# Deemix's Deezer login (the ARL cookie) expires every few months and downloads then
+# fail quietly. This checks it against Deezer every morning and goes red, with the
+# renewal one-liner in the log, the day it dies (docker#42). Exit 2 = Deezer unreachable:
+# retried for half an hour first, so a network blip doesn't ping Brandon.
+# 09:00: Brandon is awake to act on the ping.
+name: deemix-arl-check
+description: Daily check that deemix's Deezer ARL still works
+schedule: "0 9 * * *"
+tags: [monitor]
+max_active_runs: 1
+steps:
+  - name: check arl
+    command: ssh dockerhost '~/projects/docker/scripts/deemix-arl-check.sh'
+    retry_policy:
+      limit: 3
+      interval_sec: 600
+      exit_code: [2]
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"

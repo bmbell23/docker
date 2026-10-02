@@ -57,3 +57,4 @@ the same job briefly is harmless — the jobs take locks. A job in neither is no
 ## Triggering by hand
 `docker exec -u 1000 dagu dagu start <name>`. A plain `docker exec` runs as root
 and creates log directories the scheduler cannot write.
+| `deemix-arl-check` | `09:00` | — | `scripts/deemix-arl-check.sh`: validates deemix's Deezer ARL against Deezer; red (pings @brandon) when it expires, log has the renewal one-liner (docker#42) |
