@@ -11,6 +11,12 @@ schedule: "30 5 * * 0"
 queue: heavy
 max_active_runs: 1
 steps:
+  # Dagu can't recreate itself from inside a run, so this only launches the drain
+  # (docker#68) detached and returns: it pulls, and if Dagu's image is newer it pauses
+  # the scheduler, waits for this run to finish, recreates, verifies, resumes.
+  # Never fails the run: the other stacks' updates matter more.
+  - name: launch dagu update
+    command: ssh dockerhost 'XDG_RUNTIME_DIR=/run/user/1000 systemd-run --user --unit=dagu-drain --collect /home/brandon/projects/docker/scripts/dagu-drain.sh --update || echo "dagu drain not launched (one already running?)"'
   - name: update stacks
     command: ssh dockerhost '~/projects/docker/scripts/container-updates.sh'
 handler_on:

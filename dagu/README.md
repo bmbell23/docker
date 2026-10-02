@@ -61,3 +61,31 @@ The intended answer is an SSH key the container uses to run commands on the host
 (`ssh` is already in the image, sshd is running, and the key would be restricted
 to the docker bridge with `from="172.16.0.0/12"`). Until that key exists, only
 jobs that are pure HTTP or pure container work can live here.
+
+## Recreating or updating Dagu (docker#68)
+
+Never `docker compose up -d --force-recreate dagu` by hand while jobs run: it kills them.
+`scripts/dagu-drain.sh` does it like Jenkins' "Prepare for Shutdown": pull the image,
+pause the scheduler (Dagu's global pause; manual Start still works), wait until no run is
+in flight, tag the old image `updates-rollback/dagu:dagu`, recreate, check `/api/v1/health`
+and a green `deploy-reconciler` run, resume. A new image that fails is rolled back; if
+anything fails, Dagu is left **paused** and @brandon is pinged in #dagu. Missed ticks
+are listed, never replayed (no DAG here has catch-up). Log: `logs/dagu-drain/`.
+
+- **Config change merged** (`docker-compose.yml`, `config.yaml`, `ssh_include`): the repo's
+  `./deploy`, run by the reconciler, compares them with `logs/deploy/dagu-applied.sha256`
+  and starts `--recreate` (which also takes a newer image). `ssh/config` and `dags/` are
+  live and need nothing.
+- **Weekly**: `container-updates` (Sun 05:30) launches `--update` first: recreate only if
+  the image is newer.
+- **By hand**, always detached (it outlives this shell and any Dagu step):
+  `systemd-run --user --unit=dagu-drain --collect ~/projects/docker/scripts/dagu-drain.sh --recreate`
+  then `journalctl --user -fu dagu-drain`. `--dry-run`, `--no-pull`, `--max-wait 6h`.
+
+The reconciler counts the deploy done once the drain is *launched*; the drain reports its own
+result in #dagu. A run that died without cleaning up its `data/proc/*.proc` file holds the
+drain until `--max-wait`, then it gives up and resumes.
+
+One-time setup: `cp dagu/.drain.env.example dagu/.drain.env && chmod 600 dagu/.drain.env`
+and put an **admin** API token from the Dagu UI in it (or an admin login). The pause
+endpoint is admin-only; agents never read this file.
