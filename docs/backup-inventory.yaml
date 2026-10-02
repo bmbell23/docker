@@ -193,6 +193,30 @@ entries:
       dumps land inside documents/, so the next night's allston rsync (and pve01 restic, once
       live) carry them. Keeps 30, skips unchanged nights.
 
+  - name: mattermost
+    source: agentbus_postgres (Mattermost DB) + Mattermost attachments, ~/projects/agent-bus (VM 101 root disk)
+    priority: null
+    size: not measured
+    primary:   {dest: boston documents/agentbus-backups, method: dump, dag: mattermost-backup, scheduler: dagu, schedule: "30 0 * * *", state: planned, ref: "docker#76, agent-bus#144"}
+    secondary: {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: planned, ref: "rides in documents"}
+    offsite: none
+    why: >-
+      The office's chat history. Before this only the weekly VM image held it. pg_dump +
+      attachments tar, keeps 30, skips unchanged; a one-time restore test compares post counts
+      with prod (agent-bus#144). Lands in documents/, so allston and pve01 restic carry it.
+
+  - name: agentbus-secrets
+    source: every .env, bots.json and token file (sweep in agent-bus#145)
+    priority: null
+    size: not measured
+    primary:   {dest: boston documents/agentbus-backups/secrets, method: tar, dag: null, scheduler: none, schedule: "00:45 slot reserved", state: planned, ref: "agent-bus#145"}
+    secondary: {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: planned, ref: "rides in documents"}
+    offsite: none
+    why: >-
+      Encrypted archive; the key lives in Vaultwarden, so this is only restorable if Vaultwarden
+      itself has a real backup (docker#40, vaultwarden entry below). Brandon installs and runs it:
+      agents can't read secrets. Its DAG comes once the script exists.
+
   - name: vaultwarden
     source: ~/projects/docker/vaultwarden/data (VM 101 root disk)
     priority: null

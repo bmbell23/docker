@@ -1,0 +1,16 @@
+# The office's chat: a pg_dump of Mattermost plus a tar of its attachments
+# (docker#76, agent-bus#144). bin/mm-backup is Bianca's: it writes to
+# /mnt/boston/documents/agentbus-backups, keeps 30 and skips unchanged nights.
+# 00:30: before the 01:00 Proxmox rsync, so allston gets the same night's copy.
+name: mattermost-backup
+description: Back up Mattermost (DB + attachments) nightly
+schedule: "30 0 * * *"
+max_active_runs: 1
+steps:
+  - name: backup mattermost
+    command: ssh dockerhost '~/projects/agent-bus/bin/mm-backup'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
