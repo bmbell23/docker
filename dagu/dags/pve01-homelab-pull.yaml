@@ -1,0 +1,22 @@
+# Keep pve01's /opt/homelab clone (bmbell23/proxmox) on origin/main (docker#90).
+# Peter's tools and dispatcher on pve01 are links into that clone (proxmox PR #25),
+# so a merge there is live within 5 minutes, with no one doing anything.
+# The homelab user's sudoers already allows exactly this command.
+#
+# A pull never runs root setup steps (users, sudoers, VMs): those stay one command
+# for Brandon, by design. --ff-only: local edits or a diverged clone go red, never
+# a surprise merge. "idle": posts only when it turns red and when it recovers.
+# The 03:00/03:30/04:00 pve01 jobs still pull first too; if one collides with this on
+# git's lock, its next run is fine.
+name: pve01-homelab-pull
+description: git pull /opt/homelab on pve01 every 5 minutes
+schedule: "*/5 * * * *"
+max_active_runs: 1
+steps:
+  - name: pull homelab
+    command: ssh pve01 'sudo git -C /opt/homelab pull --ff-only'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID} idle"
