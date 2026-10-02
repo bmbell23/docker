@@ -1,0 +1,3 @@
+# Static, never edited: a single-file mount stays pinned to the inode it started with
+# (docker#58). The real config is ssh/config, mounted as a directory so merges reach it live.
+Include /home/dagu/ssh.d/config

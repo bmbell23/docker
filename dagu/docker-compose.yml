@@ -30,7 +30,11 @@ services:
       # exist in this container. The key is restricted to the docker bridge in
       # authorized_keys and is gitignored (this repo is public).
       - ./dagu_ed25519:/home/dagu/.ssh/id_ed25519:ro
-      - ./ssh_config:/home/dagu/.ssh/config:ro
+      # ssh/ is a directory mount so merged edits to ssh/config reach the running
+      # container; a single-file mount keeps the old inode after git rewrites it
+      # (docker#58). ~/.ssh/config is a one-line Include that never changes.
+      - ./ssh:/home/dagu/ssh.d:ro
+      - ./ssh_include:/home/dagu/.ssh/config:ro
       - /etc/localtime:/etc/localtime:ro
     deploy:
       resources:
