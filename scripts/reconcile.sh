@@ -214,7 +214,7 @@ reconcile_one() {
 
     [ "$moved" = 1 ] || [ "$sweep" = 1 ] && tidy_worktrees
 
-    if [ "$do_deploy" = false ] || [ ! -x deploy ]; then
+    if [ "$do_deploy" = false ] || [ ! -f deploy ] || [ ! -x deploy ]; then
         auto=false; deployed="${head:0:7}"; settle ok "in step with main; no ./deploy, so nothing to run."; return
     fi
     auto=true
