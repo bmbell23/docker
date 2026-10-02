@@ -83,7 +83,7 @@ entries:
     priority: P0
     size: 560G
     primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
-    secondary: {dest: pve01 brighton, method: rsync, dag: pve01-pictures-copy, scheduler: dagu, schedule: "30 3 * * *", state: planned, ref: "docker#31 PR#32"}
+    secondary: {dest: pve01 brighton, method: rsync, dag: pve01-pictures-copy, scheduler: dagu, schedule: "30 3 * * *", state: ok, ref: "first full copy 2026-10-01 23:36 (rsync exit 0, 1.16 TB); scheduled run green 2026-10-02 03:34"}
     offsite: none
     why: >-
       Brighton runs rsync without --delete: a photo deleted on boston survives there, an
@@ -94,7 +94,7 @@ entries:
     priority: P3
     size: 80G
     primary:   {dest: allston, method: rsync, dag: proxmox-backup-rsync, scheduler: dagu, schedule: "0 1 * * *", state: ok}
-    secondary: {dest: pve01 brighton, method: rsync, dag: pve01-pictures-copy, scheduler: dagu, schedule: "30 3 * * *", state: planned, ref: "docker#31 PR#32"}
+    secondary: {dest: pve01 brighton, method: rsync, dag: pve01-pictures-copy, scheduler: dagu, schedule: "30 3 * * *", state: ok, ref: "first full copy 2026-10-01 23:36 (rsync exit 0, 1.16 TB); scheduled run green 2026-10-02 03:34"}
     offsite: none
     why: Rides along with pictures/. Same as photos.
 
