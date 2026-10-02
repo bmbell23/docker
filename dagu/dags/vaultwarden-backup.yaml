@@ -1,0 +1,19 @@
+# Vaultwarden: the passwords for everything else, including the key to the encrypted
+# secrets archive (agent-bus#145) (docker#40). The script uses vaultwarden's own
+# `backup` command, so it's online-safe, then checks integrity and refuses an empty vault.
+# It adds rsa_key.pem and writes a tar.gz to /mnt/boston/documents/vaultwarden-backups,
+# keeping 30 and skipping unchanged nights.
+# 00:15: first of the night, before the 01:00 Proxmox rsync and the 03:00 pve01 restic.
+name: vaultwarden-backup
+description: Back up Vaultwarden (DB + server key) nightly
+schedule: "15 0 * * *"
+tags: [backup]
+max_active_runs: 1
+steps:
+  - name: backup vaultwarden
+    command: ssh dockerhost '~/projects/docker/scripts/backup/vaultwarden-backup.sh'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
