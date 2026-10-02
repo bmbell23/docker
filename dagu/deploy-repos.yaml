@@ -9,7 +9,8 @@
 #     ./deploy at the repo root IS the opt-in (thread 016's contract): the owner adds
 #     it in her repo, nothing here changes. `deploy: false` pauses it for one repo.
 #
-# Third-party stacks in docker/ stay manual: docker has no ./deploy.
+# Third-party stacks in docker/ stay manual: docker's ./deploy only drains + recreates
+# Dagu when its compose/config changed (docker#68).
 #   - apk: runs the repo's own ./build-apk once the clone is at the new main and any
 #     ./deploy ran; Biscuit announces it (docker#51, agent-bus thread 017). Same opt-in:
 #     the executable file. `build_apk: false` pauses it. `apk: <script>` is the bridge:

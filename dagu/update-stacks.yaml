@@ -44,4 +44,6 @@ stacks:
     why: v2 -> v3 is a major upgrade done by hand once (docker#26); then flip to auto
   - name: dagu
     mode: notify
-    why: the job runs inside Dagu, and recreating Dagu kills the run doing it
+    why: >-
+      the job runs inside Dagu, and recreating Dagu kills the run doing it; the job's
+      first step launches scripts/dagu-drain.sh --update instead (docker#68)

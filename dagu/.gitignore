@@ -2,3 +2,4 @@ data/
 logs/
 dagu_ed25519
 dagu_ed25519.pub
+.drain.env
