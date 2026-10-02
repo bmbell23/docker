@@ -36,10 +36,12 @@ groups:
           summary: "{{ $labels.instance }} {{ $labels.mountpoint }} will be full within 24h at the current rate"
 
       # Niced work (Jellyfin thumbnails, whisper) yields to everything else, so it
-      # doesn't count as busy here.
+      # doesn't count as busy here. Sum the not-busy modes, then divide by the CPU count
+      # (docker#88: avg over modes x CPUs divided the not-busy share by 3).
       - alert: HostCPUSaturated
         expr: |
-          1 - avg by (instance) (rate(node_cpu_seconds_total{mode=~"idle|nice|iowait"}[5m])) > 0.9
+          1 - sum by (instance) (rate(node_cpu_seconds_total{mode=~"idle|nice|iowait"}[5m]))
+            / count by (instance) (node_cpu_seconds_total{mode="idle"}) > 0.9
         for: 15m
         labels:
           severity: warning
