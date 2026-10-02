@@ -25,6 +25,7 @@ bridge in `authorized_keys` and is gitignored; this repo is public.
 | `container-updates` | Sun `05:30` | nothing: `:latest` only moved on a random recreate | stacks in `dagu/update-stacks.yaml`: pull newer images, backup hook, recreate, health check, revert on failure; never restores a DB by itself. `--check <stack>` runs just the health check. docker#37 |
 | `wordforge-backup` | `02:35` | — | WordForge `bin/backup`: SQLite `.backup` → `/mnt/boston/documents/wordforge-backups`, keeps 30 (docker#55) |
 | `vaultwarden-backup` | `00:15` | nothing (the script existed, nothing ran it) | `scripts/backup/vaultwarden-backup.sh`: `vaultwarden backup` + rsa_key.pem → `/mnt/boston/documents/vaultwarden-backups`, keeps 30 (docker#40) |
+| `secrets-backup` | `00:45` | — | agent-bus `bin/secrets-backup`: gpg-encrypted tar of untracked secrets → `/mnt/boston/documents/agentbus-backups/secrets` (docker#84, agent-bus#145) |
 | `mattermost-backup` | `00:30` | — | agent-bus `bin/mm-backup`: Mattermost pg_dump + attachments → `/mnt/boston/documents/agentbus-backups` (docker#76, agent-bus#144) |
 
 ## Alerts
