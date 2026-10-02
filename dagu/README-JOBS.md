@@ -22,6 +22,7 @@ bridge in `authorized_keys` and is gitignored; this repo is public.
 | `proxmox-dotfiles-pull` | `05:00` | — | keeps the Proxmox dotfiles clone current for Brandon's shell; no job depends on it |
 | `deploy-reconciler` | `*/2` | `ship-pr`'s versioning when Brandon merges in the GitHub UI; every manual `docker compose up` after a merge | repos in `dagu/deploy-repos.yaml`: version, fast-forward, tidy merged worktrees, run `./deploy`. State in `logs/deploy/state.json`. docker#45. Step 2 `scripts/preview-cleanup.sh`: removes `<project>_pr<N>` previews of merged/closed PRs, then dangling images + build cache >24 h (docker#49) |
 | `proxmox-config-backup` | `02:00` | Proxmox cron `proxmox-config-backup.sh` | runs on **Proxmox**; `/etc/pve` etc. → boston |
+| `container-updates` | Sun `05:30` | nothing: `:latest` only moved on a random recreate | stacks in `dagu/update-stacks.yaml`: pull newer images, backup hook, recreate, health check, revert on failure; never restores a DB by itself. `--check <stack>` runs just the health check. docker#37 |
 | `wordforge-backup` | `02:35` | — | WordForge `bin/backup`: SQLite `.backup` → `/mnt/boston/documents/wordforge-backups`, keeps 30 (docker#55) |
 
 ## Alerts

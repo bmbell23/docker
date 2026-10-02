@@ -1,0 +1,20 @@
+# Weekly updates of the off-the-shelf containers (docker#37): for every stack in
+# dagu/update-stacks.yaml, pull a newer image if there is one, back up first where
+# listed, recreate, health-check, and revert the image if it fails. Details and the
+# rules: scripts/container-updates.sh. Summary to #infra as Biscuit.
+# Sunday 05:30: after the nightly backups (01:00-04:00, restore test 04:00), so every
+# stack has a fresh backup, and well before the Sun 21:00 vzdump. Heavy queue: pulls
+# and recreates shouldn't race the backup jobs.
+name: container-updates
+description: Weekly update of third-party containers, with health check and revert
+schedule: "30 5 * * 0"
+queue: heavy
+max_active_runs: 1
+steps:
+  - name: update stacks
+    command: ssh dockerhost '~/projects/docker/scripts/container-updates.sh'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID}"
