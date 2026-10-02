@@ -1,0 +1,47 @@
+# Off-the-shelf stacks the weekly container-updates job looks after (docker#37).
+# Read by scripts/container-updates.sh; one entry per compose dir under ~/projects/docker.
+#
+#   mode  auto    pull, back up, recreate, health-check; revert the image if it fails
+#         notify  only report that a newer image exists (can't or shouldn't self-update)
+#         hold    report, never touch (a manual upgrade is pending; say why)
+#   pre   host command run first; if it fails the stack is skipped, not updated
+#   post  host command run after the recreate, before the health check (migrations)
+#   why   the reason for notify/hold or for the hook
+#
+# A stack that failed AND failed to revert gets logs/updates/.hold-<name> and is
+# skipped until someone deletes that file.
+# Not listed: the monitoring stack (pinned version tags; bump them in a PR), the local
+# builds (gallery-dl, youtube-downloader), the stopped ones (fileshare, jenkins),
+# and agent-bus's Mattermost (Bianca's).
+stacks:
+  - {name: audiobookshelf, mode: auto}
+  - {name: calibre, mode: auto}
+  - {name: deemix, mode: auto}
+  - {name: jackett, mode: auto}
+  - name: jellyfin
+    mode: auto
+    pre: ~/projects/docker/scripts/backup/backup-databases.sh
+    why: fresh jellyfin.db copy (and RomM dump) before the update
+  - name: romm
+    mode: auto
+    pre: ~/projects/docker/scripts/backup/backup-databases.sh
+    why: fresh RomM mariadb dump before the update (romm-db pinned to mariadb:12.2, so only patch releases come automatically)
+  - name: stash
+    mode: auto
+    post: ~/projects/docker/scripts/updates/stash-migrate.sh
+    why: Stash stops at NEEDS_MIGRATION after a schema bump (docker#25); the hook migrates with a backup
+  - {name: torrents, mode: auto}
+  - {name: trilium, mode: auto}
+  - name: vaultwarden
+    mode: auto
+    pre: ~/projects/docker/scripts/backup/vaultwarden-backup.sh
+    why: holds every other password
+  - name: pihole
+    mode: auto
+    why: last of the auto stacks, so a DNS hiccup can't break the other pulls
+  - name: immich
+    mode: hold
+    why: v2 -> v3 is a major upgrade done by hand once (docker#26); then flip to auto
+  - name: dagu
+    mode: notify
+    why: the job runs inside Dagu, and recreating Dagu kills the run doing it
