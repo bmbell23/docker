@@ -281,8 +281,9 @@ clone, removes the merged PR's worktree, tags the current images `:previous` and
 until 200 or fail loudly. Without `./deploy` the clone still syncs but nothing
 redeploys.
 
-**Previews** (rules: agent-bus `README.md`, "Preview containers"). For a PR Brandon
-should click through:
+**Previews.** The rules, and a compose template to copy, live in agent-bus
+`README.md`, "Preview containers"; that section wins if the two ever disagree. The
+short version, for a PR Brandon should click through:
 
 | Thing | Value |
 |---|---|
@@ -320,6 +321,9 @@ docker ps -a --filter label=dashboard.preview.pr \
 ```
 
 ## 12. New-app checklist (hand this to the new agent)
+
+The office-wide order, with an owner per step, is agent-bus `docs/NEW_SERVICE.md`
+(start there). This is the app-building detail behind it.
 
 Who does what: the new agent owns her repo; Bianca adds her to the office (roster,
 persona, `agent-bus` rules); Daisy adds the Dashboard row; Dakota adds the
