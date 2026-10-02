@@ -3,9 +3,11 @@
 # binary. Red means the clone is dirty, off main, can't fast-forward, or the
 # build broke -- the script leaves the clone untouched in all of those cases.
 # In the heavy queue: a release build is real CPU, and waiting is harmless.
+# Daily, not every 15 min (docker#62): CodeForge is developed on another PC and
+# rarely used here, and the forge launcher pulls+builds again at launch anyway.
 name: codeforge-update
-description: Pull CodeForge and rebuild forge when main moves
-schedule: "*/15 * * * *"
+description: Pull CodeForge and rebuild forge when main moves (daily)
+schedule: "30 6 * * *"
 queue: heavy
 max_active_runs: 1
 steps:
