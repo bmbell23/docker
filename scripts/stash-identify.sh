@@ -1,5 +1,6 @@
 #!/bin/bash
 # Stash nightly metadata pipeline:
+#   0. Scan for new files, then Clean out entries whose files are gone (guarded, backed up first)
 #   1. Identify scenes via StashDB fingerprint matching
 #   2. Enrich performers with photos/bio from StashDB
 #   3. Auto-tag scenes by filename against performers/studios/tags in DB
@@ -7,6 +8,8 @@
 STASH_URL="http://localhost:9999/graphql"
 STASHDB_ENDPOINT="https://stashdb.org/graphql"
 LOGFILE="/home/brandon/projects/docker/logs/stash-identify.log"
+MOUNT="/mnt/boston"
+LIBRARY="/mnt/boston/media/other"   # Stash's /data (stash/docker-compose.yml)
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOGFILE"
@@ -36,6 +39,39 @@ if [ -n "$JOB_ID" ]; then
     sleep 30
 else
     log "  ERROR: Failed to start scan job. Response: $RESPONSE"; FAILED=1
+fi
+
+# Step 0a: Clean entries whose files are gone (docker#108; scan only adds). Stash runs jobs in
+# order, so this follows the scan above. Guarded: an unmounted or half-mounted share looks
+# exactly like "everything was deleted", and Clean would empty the library.
+log "Step 0a: Cleaning entries for deleted files..."
+TRACKED=$(graphql '{"query": "{ findScenes(filter:{per_page:-1}) { scenes { files { path } } } findImages(filter:{per_page:-1}) { images { files { path } } } }"}' |
+    python3 -c "
+import sys, json, os
+d = json.load(sys.stdin)['data']
+paths = [f['path'] for k, v in (('scenes', d['findScenes']), ('images', d['findImages'])) for i in v[k] for f in i['files']]
+print(len(paths), sum(os.path.exists(p.replace('/data/', '$LIBRARY/', 1)) for p in paths))" 2>/dev/null)
+read -r N_TRACKED N_PRESENT <<<"$TRACKED"
+if ! mountpoint -q "$MOUNT"; then
+    log "  ERROR: $MOUNT isn't mounted; not cleaning"; FAILED=1
+elif [ -z "$N_TRACKED" ]; then
+    log "  ERROR: couldn't list Stash's files; not cleaning"; FAILED=1
+elif [ "$N_TRACKED" -gt 0 ] && [ $((N_PRESENT * 2)) -lt "$N_TRACKED" ]; then
+    log "  ERROR: only $N_PRESENT of $N_TRACKED tracked files exist under $LIBRARY; not cleaning. Check the share, then Clean by hand (backup first)"; FAILED=1
+elif [ "$N_PRESENT" = "$N_TRACKED" ]; then
+    log "  all $N_TRACKED tracked files exist; nothing to clean"
+else
+    graphql '{"query": "mutation { backupDatabase(input: { download: false }) }"}' | grep -q '"errors"' \
+        && { log "  ERROR: database backup failed; not cleaning"; FAILED=1; }
+    if [ "$FAILED" -eq 0 ]; then
+        RESPONSE=$(graphql '{"query": "mutation { metadataClean(input: { dryRun: false }) }"}')
+        JOB_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['metadataClean'])" 2>/dev/null)
+        if [ -n "$JOB_ID" ]; then
+            log "  $((N_TRACKED - N_PRESENT)) of $N_TRACKED tracked files are gone; backed up, Clean job started (job ID: $JOB_ID)"
+        else
+            log "  ERROR: Failed to start clean job. Response: $RESPONSE"; FAILED=1
+        fi
+    fi
 fi
 
 # Step 0b: Create/update Stash Groups from video subdirectories
