@@ -31,7 +31,11 @@ docker compose up -d
   agent-bus's bridge, which posts as @mongo in #infra (docker#96). No secret on this side.
 - The config dirs are mounted as directories, so a merged change is in the container right
   away; a `/-/reload` applies it. File mounts kept the pre-pull copy (docker#96).
-- Rule or scrape changes: `curl -X POST localhost:9090/-/reload`. Alertmanager: `curl -X POST localhost:9093/-/reload`.
+- **Merges apply themselves** (docker#104): the reconciler runs the repo's `./deploy`, which checks
+  and reloads Prometheus/Alertmanager when their config changed, and runs `up -d` when the compose
+  file did. A config that fails its check fails the deploy (Mongo says so), and the old config keeps running.
+  Stamps: `logs/deploy/mon-*-applied.sha256`.
+- By hand: `curl -X POST localhost:9090/-/reload`. Alertmanager: `curl -X POST localhost:9093/-/reload`.
 - Validate before reloading:
   `docker exec prometheus promtool check config /etc/prometheus/prometheus.yml`,
   `docker exec alertmanager amtool check-config /etc/alertmanager/alertmanager.yml`.
@@ -43,8 +47,8 @@ or 10 GB, whichever comes first. **Never `down -v`**, because it deletes the his
 
 ## Adding a machine
 Install node_exporter on it (port 9100), then add it to the `node` job in
-`prometheus/prometheus.yml` with an `instance:` label. Then reload.
-The planned additions are the Proxmox host, pve01, k3s01, and the GPU exporter once the card is in.
+`prometheus/prometheus.yml` with an `instance:` label. The merge reloads it.
+Watched now: dockerhost, the Proxmox host (plus SMART), pve01, k3s01-03. Still planned: the GPU exporter once the card is in.
 
 ## Silencing
 Use http://100.69.184.113:9093 → New Silence, for example during planned maintenance.
