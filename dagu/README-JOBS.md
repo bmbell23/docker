@@ -37,6 +37,10 @@ Pollers (`audiobook-watch`, `chapter-worker`, `align-worker`, `codeforge-notes-s
 `deploy-reconciler`) pass `idle`: their successes post only when the run printed
 something, so "nothing new" ticks stay quiet. A new DAG copies the handler block; add
 `idle` if it runs more often than hourly. State lives in `~/.local/state/dagu-alerts/`.
+Each DAG gets one thread per day (docker#94): the day's first post is a 🧵 root with the
+job name and date, every run that day replies under it with a link to the run
+(`/dag-runs/<dag>/<run-id>`). The root id is cached in `<dag>.thread`; if `bin/say`
+can't thread, posts fall back to flat.
 
 ## Backup DAGs
 A DAG that makes a backup copy carries `tags: [backup]`, and the same PR names it in
