@@ -21,7 +21,8 @@
 #               recreated since the last run (a deploy, however it was done; docker#47).
 #
 # State for the Dashboard: logs/deploy/state.json (format in thread 016). Posts to #infra
-# as Biscuit on changes only: a deploy, a version, a repo going red or green again.
+# on changes only: Biscuit for a deploy, a version, a build, a repo green again; Mongo for
+# a repo going red or a failed build (docker#101).
 # Red alerts and deploys @mention Brandon.
 #
 #   reconcile.sh [--dry-run] [--sweep] [--only <name>]
@@ -68,10 +69,11 @@ strikes() {   # strikes <kind> add|clear -> prints the count; transient failures
 
 log() { echo "[$name] $*"; }
 
-post() {   # Biscuit, not an agent: costs nothing, wakes nobody
-    if [ "$dry" = 1 ]; then echo "[dry-run] would post: $1"; return 0; fi
-    printf '%s\n' "$1" | "$SAY" biscuit "$CHANNEL" - \
-        || { echo "ALERT NOT DELIVERED: $1" >&2; logger -t reconcile "ALERT NOT DELIVERED: $1"; }
+post() {   # post biscuit|mongo <msg>: notifiers, not agents; cost nothing, wake nobody.
+            # Bad news is Mongo's, never Biscuit's (docker#101, agent-bus #158).
+    if [ "$dry" = 1 ]; then echo "[dry-run] would post as $1: $2"; return 0; fi
+    printf '%s\n' "$2" | "$SAY" "$1" "$CHANNEL" - \
+        || { echo "ALERT NOT DELIVERED: $2" >&2; logger -t reconcile "ALERT NOT DELIVERED: $2"; }
 }
 
 prev() { jq -r --arg n "$name" ".repos[\$n].$1 // empty" "$STATE"; }
@@ -91,8 +93,8 @@ record() {   # record <status> <message> [log] [rollback]; atomic for the Dashbo
 settle() {   # settle <status> <message> [log] [rollback]
     local was was_org; was=$(prev status); was_org=$(prev origin_sha)
     case "$1" in
-    ok) case "$was" in failed|skipped-*) post "\`$name\` is back in step with main (${origin:0:7})." ;; esac ;;
-    *)  [ "$was" = "$1" ] && [ "$was_org" = "${origin:0:7}" ] || post "@brandon \`$name\` $1: $2 $DASH" ;;
+    ok) case "$was" in failed|skipped-*) post biscuit "\`$name\` is back in step with main (${origin:0:7})." ;; esac ;;
+    *)  [ "$was" = "$1" ] && [ "$was_org" = "${origin:0:7}" ] || post mongo "@brandon \`$name\` $1: $2 $DASH" ;;
     esac
     record "$@"
 }
@@ -139,7 +141,7 @@ version_main() {   # step 1
         strikes version clear >/dev/null
         git fetch -q origin
         log "versioned v$v"
-        post "Versioned \`$name\` **v$v**: $subj (merged outside ship-pr)."
+        post biscuit "Versioned \`$name\` **v$v**: $subj (merged outside ship-pr)."
     else
         git tag -d "v$v" >/dev/null                         # usually someone pushed first; next run retries
         version_failed "push of v$v rejected: $(head -2 "$OUT/.push-err")"
@@ -277,7 +279,7 @@ build() {   # build apk|win
     [ "$built" = "$sha" ] && return 0
     [ "$(prev "${k}_status")" = failed ] && [ "$(prev "${k}_tried")" = "$sha" ] && return 0   # alerted already; next merge retries
     case "$(date +%H)" in 01|02|03) log "$k waits: 01:00-04:00 is the backup window"; return 0 ;; esac
-    [ -x "$script" ] || { [ "$(prev "${k}_tried")" = "$sha" ] || post "@brandon ❌ \`$name\` $what build failed: \`$script\` isn't an executable file in the repo. $DASH"
+    [ -x "$script" ] || { [ "$(prev "${k}_tried")" = "$sha" ] || post mongo "@brandon ❌ \`$name\` $what build failed: \`$script\` isn't an executable file in the repo. $DASH"
                           record_build "$k" failed "$built" "no executable $script"; return 0; }
     v=$(tr -d '[:space:]' < version.txt 2>/dev/null)
     if [ "$dry" = 1 ]; then log "[dry-run] would run ./$script for ${v:+v$v }($sha)"; return 0; fi
@@ -296,14 +298,14 @@ build() {   # build apk|win
         log "$k rebuilt for $sha"
         record_build "$k" ok "$sha" "rebuilt ${line:-$sha}" "$lg"
         if [ "$k" = apk ]; then
-            post "@brandon 📱 **$name** APK rebuilt: ${line:-$sha} ($sha)"
+            post biscuit "@brandon 📱 **$name** APK rebuilt: ${line:-$sha} ($sha)"
         else
             ver="${line%% *}"; link=""; [ "$ver" = "$line" ] || link="${line#* }"
             [ -n "$ver" ] || ver="$sha"; [[ "$ver" =~ ^[0-9] ]] && ver="v$ver"
-            post "@brandon 🪟 **$name** $ver installer rebuilt${link:+ · $link} ($sha)"
+            post biscuit "@brandon 🪟 **$name** $ver installer rebuilt${link:+ · $link} ($sha)"
         fi ;;
     75) log "$k: nothing to rebuild for $sha"; record_build "$k" ok "$sha" "nothing to rebuild ($sha)" "$lg"; return 0 ;;
-    *)  post "@brandon ❌ \`$name\` $what build failed: \`./$script\` exited $rc for ${v:+v$v }($sha). The old one is still served. Log: \`$lg\`
+    *)  post mongo "@brandon ❌ \`$name\` $what build failed: \`./$script\` exited $rc for ${v:+v$v }($sha). The old one is still served. Log: \`$lg\`
 \`\`\`
 $(tail -n 8 "$lg")
 \`\`\`"
@@ -311,7 +313,7 @@ $(tail -n 8 "$lg")
     esac
     # The next merge would stop at skipped-dirty anyway; say why now.
     [ -z "$(git status --porcelain --untracked-files=no)" ] \
-        || post "@brandon \`$name\`: \`./$script\` changed tracked files in the main clone, so the next merge will skip it until that's fixed: $(git status --porcelain --untracked-files=no | head -5 | awk '{print $2}' | paste -sd' ')"
+        || post mongo "@brandon \`$name\`: \`./$script\` changed tracked files in the main clone, so the next merge will skip it until that's fixed: $(git status --porcelain --untracked-files=no | head -5 | awk '{print $2}' | paste -sd' ')"
 }
 
 announce_deploys() {   # docker#47: most deploys are a hand/agent `docker compose up`, not ./deploy
@@ -332,7 +334,7 @@ announce_deploys() {   # docker#47: most deploys are a hand/agent `docker compos
             [ -n "$names" ] || continue
             v=$(cat "$rpath/version.txt" 2>/dev/null | tr -d '[:space:]')
             sha=$(git -C "$rpath" rev-parse --short=7 HEAD 2>/dev/null)
-            post "@brandon Deployed \`$repo\`${v:+ **v$v**}${sha:+ ($sha)}: $names"
+            post biscuit "@brandon Deployed \`$repo\`${v:+ **v$v**}${sha:+ ($sha)}: $names"
         done 4<<<"$rows"
     fi
     [ "$dry" = 1 ] && return 0
