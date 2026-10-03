@@ -34,10 +34,11 @@ log "Created backup directory: $BACKUP_ROOT"
 backup_postgres() {
     local container=$1
     local db_name=$2
+    local user=${3:-postgres}
     local backup_file="$BACKUP_ROOT/${container}_${db_name}.sql"
     
     log "Backing up PostgreSQL database: $container ($db_name)"
-    if docker exec "$container" pg_dump -U postgres "$db_name" > "$backup_file"; then
+    if docker exec "$container" pg_dump -U "$user" "$db_name" > "$backup_file"; then
         gzip "$backup_file"
         log "✓ PostgreSQL backup complete: ${backup_file}.gz"
     else
@@ -88,8 +89,8 @@ log "========================================="
 # 1. IMMICH - CRITICAL (PostgreSQL database + config)
 log ""
 log "=== IMMICH BACKUP ==="
-backup_postgres "immich_postgres" "immich" || warn "Immich database backup failed"
-backup_directory "/home/brandon/immich/postgres" "immich_postgres_data" || warn "Immich postgres data backup failed"
+# The live data dir is the immich_immich-postgres volume on /mnt/docker; a dump is the usable copy (docker#26)
+backup_postgres "immich-db" "immich" "immich" || warn "Immich database backup failed"
 
 # 2. ROMM - MariaDB database
 log ""

@@ -40,8 +40,9 @@ stacks:
     mode: auto
     why: last of the auto stacks, so a DNS hiccup can't break the other pulls
   - name: immich
-    mode: hold
-    why: v2 -> v3 is a major upgrade done by hand once (docker#26); then flip to auto
+    mode: auto
+    pre: ~/projects/docker/scripts/backup/immich-dump.sh
+    why: fresh verified DB dump first; a reverted image can't undo migrations the new one ran (v3 done by hand, docker#26)
   - name: dagu
     mode: notify
     why: >-
