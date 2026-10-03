@@ -29,10 +29,23 @@ scrape_configs:
         labels:
           instance: dockerhost
 
-  # One target per machine. The Proxmox host, pve01 and k3s01 get added here
-  # once node_exporter is installed on them (follow-up to #53).
+  # One target per machine. pve01 and k3s01 get added here once node_exporter
+  # is installed on them (follow-up to #53).
   - job_name: node
     static_configs:
       - targets: ['dockerhost:9100']
         labels:
           instance: dockerhost
+      # Proxmox host (docker#92, proxmox#42), by LAN IP like the Dagu ssh config.
+      - targets: ['10.0.0.159:9100']
+        labels:
+          instance: proxmox
+
+  # SMART for the Proxmox host's drives (docker#92, proxmox#42). 5 report today:
+  # nvme0, sda (boston), sdb, sdd (external), sde (allston). sdc died in May.
+  - job_name: smartctl
+    scrape_interval: 60s
+    static_configs:
+      - targets: ['10.0.0.159:9633']
+        labels:
+          instance: proxmox
