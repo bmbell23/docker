@@ -59,6 +59,7 @@ services:
       - GF_SERVER_ROOT_URL=http://100.69.184.113:8016
       - GF_ANALYTICS_REPORTING_ENABLED=false
       - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/homelab-overview.json   # Daisy's one-page overview (docker#106)
     ports:
       - '8016:3000'
     volumes:
