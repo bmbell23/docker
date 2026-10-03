@@ -3,7 +3,8 @@
 # repo in dagu/deploy-repos.yaml; this closes the gap no matter who merged or how
 # (bin/ship-pr or the GitHub UI). Run every 2 min by dagu/dags/deploy-reconciler.yaml.
 #
-# Per repo, in order:
+# Per repo, in order (skipped for this pass while ship-pr's bin/post-merge holds the repo's
+# .git/post-merge.lock, docker#100):
 #   1. version  a PR merged since the last "vX.Y.Z: ..." commit (merged outside ship-pr):
 #               add the version.txt commit + tag on origin/main, the way ship-pr does.
 #               Waits RECONCILE_GRACE s after the merge so it never races ship-pr, and
@@ -351,6 +352,15 @@ while IFS=$'\t' read -r -u 3 name path enabled do_deploy do_version do_apk do_wi
     [ -z "$only" ] || [ "$only" = "$name" ] || continue
     [ "$enabled" = false ] && continue
     auto=false
-    ( reconcile_one; build apk; build win ) || echo "[$name] reconcile crashed (exit $?)"
+    # bin/post-merge (ship-pr) holds this lock for its whole pull → version → deploy; two
+    # `docker compose up`s on one commit collide on container names (docker#100). Held: skip
+    # this repo, the next pass catches up.
+    (
+        if gd=$(git -C "$path" rev-parse --absolute-git-dir 2>/dev/null); then
+            exec 8>"$gd/post-merge.lock"
+            flock -n 8 || { log "bin/post-merge is handling it; skipped this pass"; exit 0; }
+        fi
+        reconcile_one; build apk; build win
+    ) || echo "[$name] reconcile crashed (exit $?)"
 done 3<<<"$rows"
 announce_deploys
