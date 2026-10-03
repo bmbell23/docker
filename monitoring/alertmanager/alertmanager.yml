@@ -14,6 +14,10 @@ inhibit_rules:
   - source_matchers: [severity="critical"]
     target_matchers: [severity="warning"]
     equal: [alertname, instance, mountpoint]
+  # pve01 off = its k3s VMs off: one page, not four (docker#115). A k3s node that
+  # drops while pve01 is up still pages.
+  - source_matchers: [alertname="TargetDown", instance="pve01"]
+    target_matchers: [alertname="TargetDown", 'instance=~"k3s0[1-3]"']   # quoted: [ ] inside a flow list
 
 receivers:
   # Mongo's bridge (agent-bus #134/#135, thread 018): takes the standard webhook v4 JSON
