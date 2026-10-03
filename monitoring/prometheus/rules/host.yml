@@ -102,3 +102,25 @@ groups:
           severity: warning
         annotations:
           summary: "Container {{ $labels.name }} restarted {{ $value }} times in 15m"
+
+  # Dagu only speaks when a run fails; a run that never happens (suspended, never
+  # scheduled) says nothing. peter-restic stamps each success into pve01's
+  # node-exporter textfile dir (proxmox#60, docker#117). While pve01 is down the
+  # metric is absent, not stale: TargetDown{instance="pve01"} covers that.
+  - name: backups
+    rules:
+      - alert: BackupStale
+        expr: time() - restic_backup_last_success_timestamp_seconds > 30 * 3600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} restic {{ $labels.repo }}: no good backup for {{ $value | humanizeDuration }}"
+
+      - alert: RestoreTestStale
+        expr: time() - restic_restore_test_last_success_timestamp_seconds > 8 * 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} restic {{ $labels.repo }}: no passing restore test for {{ $value | humanizeDuration }}"
