@@ -1,7 +1,8 @@
 # Versioned restic backup of /mnt/boston/documents into the repo on beacon
 # (/mnt/beacon, pve01's 320G mirror) (docker#31, proxmox#11, agent-bus thread 012).
-# The scripts live in bmbell23/proxmox, cloned to /opt/homelab on pve01; each run
-# pulls first, so a merged change there takes effect the next night.
+# The scripts live in bmbell23/proxmox, cloned to /opt/homelab on pve01 and kept
+# fresh by pve01-homelab-pull (*/5). No pull step here: two pulls in the same second
+# clobber FETCH_HEAD, and that cost a night's backup on 2026-10-03 (docker#113).
 # 03:00: after proxmox-backup-rsync (01:00) and the config backups (02:00/02:10),
 # so only one job reads boston at a time.
 name: pve01-documents-restic
@@ -10,12 +11,8 @@ tags: [backup]
 schedule: "0 3 * * *"
 max_active_runs: 1
 steps:
-  - name: pull homelab
-    command: ssh pve01 'sudo git -C /opt/homelab pull --ff-only'
   - name: restic backup
     command: ssh pve01 'sudo /usr/local/sbin/peter-restic run-backup documents'
-    depends:
-      - pull homelab
 handler_on:
   failure:
     command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"

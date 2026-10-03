@@ -8,12 +8,8 @@ tags: [backup]
 schedule: "0 4 * * 0"
 max_active_runs: 1
 steps:
-  - name: pull homelab
-    command: ssh pve01 'sudo git -C /opt/homelab pull --ff-only'
   - name: restore test
     command: ssh pve01 'sudo /usr/local/sbin/peter-restic run-restore-test documents'
-    depends:
-      - pull homelab
 handler_on:
   failure:
     command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
