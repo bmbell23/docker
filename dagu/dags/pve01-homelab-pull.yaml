@@ -6,8 +6,8 @@
 # A pull never runs root setup steps (users, sudoers, VMs): those stay one command
 # for Brandon, by design. --ff-only: local edits or a diverged clone go red, never
 # a surprise merge. "idle": posts only when it turns red and when it recovers.
-# The 03:00/03:30/04:00 pve01 jobs still pull first too; if one collides with this on
-# git's lock, its next run is fine.
+# It's the only job that pulls: the 03:00/03:30/04:00 pve01 jobs used to pull first
+# too and collided with this one on FETCH_HEAD (docker#113).
 name: pve01-homelab-pull
 description: git pull /opt/homelab on pve01 every 5 minutes
 schedule: "*/5 * * * *"
