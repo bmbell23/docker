@@ -39,23 +39,19 @@ scrape_configs:
       - targets: ['10.0.0.159:9100']
         labels:
           instance: proxmox
-      # pve01, the backup server, and its k3s VMs (docker#98, thread 018). `parent` lets
-      # pve01's own TargetDown mute theirs while the whole box is off (docker#115).
+      # pve01, the backup server, and its k3s VMs (docker#98, thread 018).
       - targets: ['10.0.0.197:9100']
         labels:
           instance: pve01
       - targets: ['10.0.0.201:9100']
         labels:
           instance: k3s01
-          parent: pve01
       - targets: ['10.0.0.202:9100']
         labels:
           instance: k3s02
-          parent: pve01
       - targets: ['10.0.0.203:9100']
         labels:
           instance: k3s03
-          parent: pve01
 
   # SMART for the Proxmox host's drives (docker#92, proxmox#42). 5 report today:
   # nvme0, sda (boston), sdb, sdd (external), sde (allston). sdc died in May.
