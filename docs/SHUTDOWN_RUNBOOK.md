@@ -83,3 +83,17 @@ Also add `_netdev` to the boston fstab line, then `sudo systemctl daemon-reload`
 `RequiresMountsFor`, if boston can't mount, **docker doesn't start at all**. That's loud (every app
 down, verify-boot fails at step 1) instead of quiet and wrong (apps up on empty folders, downloads
 filling the root disk). That's the trade we want.
+
+## Taking pve01 down (the backup server; docker#111)
+dockerhost stays up, but four Dagu jobs ssh to pve01 and Prometheus scrapes pve01 + k3s01-03.
+Wrap the downtime so it pages nobody, and prove it came back:
+```
+~/projects/docker/scripts/maintenance/pve01-maintenance.sh start --hours 4   # exit 3 = a pve01 job is running, retry
+# ... Peter's host-side prep (bmbell23/proxmox), shut pve01 down, do the work, boot it ...
+~/projects/docker/scripts/maintenance/pve01-maintenance.sh end               # also prints RAM before -> after
+```
+`start` suspends every `dagu/dags/pve01-*` DAG (Dagu API, read back) and puts an Alertmanager
+silence on `instance=~pve01|k3s01|k3s02|k3s03`. `end` resumes the DAGs, runs `pve01-homelab-pull`
+once, and lifts the silence only if all four targets are `up`; otherwise it leaves the silence to
+expire and says so. Skipped scheduled runs are not replayed: a 03:00 restic missed is caught by the next night.
+`status` shows where things stand. Uses `dagu/.drain.env`, so Brandon runs it, not an agent.
