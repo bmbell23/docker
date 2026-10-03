@@ -19,8 +19,7 @@ services:
     ports:
       - '9090:9090'
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus:/etc/prometheus:ro   # a directory, not files: a git pull replaces files, and a file mount keeps the old one (docker#96)
       - prometheus_data:/prometheus
     deploy:
       resources:
@@ -38,11 +37,7 @@ services:
     ports:
       - '9093:9093'
     volumes:
-      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      # mongo_webhook_url: Mongo's Mattermost incoming-webhook URL (gitignored;
-      # this repo is public). Read at send time, so a missing file only fails
-      # notifications, not startup.
-      - ./alertmanager/secrets:/etc/alertmanager/secrets:ro
+      - ./alertmanager:/etc/alertmanager:ro   # a directory, same reason (docker#96)
       - alertmanager_data:/alertmanager
     deploy:
       resources:

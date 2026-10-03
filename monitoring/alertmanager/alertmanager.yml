@@ -16,11 +16,10 @@ inhibit_rules:
     equal: [alertname, instance, mountpoint]
 
 receivers:
-  # Mattermost incoming webhooks speak Slack's format.
+  # Mongo's bridge (agent-bus #134/#135, thread 018): takes the standard webhook v4 JSON
+  # and posts as @mongo in #infra, formatting included. No secret needed here
+  # (docker#96: the old slack_configs pointed at a webhook file that never existed).
   - name: mongo
-    slack_configs:
-      - api_url_file: /etc/alertmanager/secrets/mongo_webhook_url
-        username: Mongo
+    webhook_configs:
+      - url: http://agentbus_mongo:9095/alert
         send_resolved: true
-        title: '{{ if eq .Status "firing" }}{{ if eq .CommonLabels.severity "critical" }}🔴{{ else }}🟠{{ end }} {{ .CommonLabels.alertname }}{{ else }}✅ Resolved: {{ .CommonLabels.alertname }}{{ end }}'
-        text: '{{ range .Alerts }}- {{ .Annotations.summary }}{{ "\n" }}{{ end }}'
