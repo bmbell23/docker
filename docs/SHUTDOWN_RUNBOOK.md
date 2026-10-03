@@ -92,8 +92,8 @@ Wrap the downtime so it pages nobody, and prove it came back:
 # ... Peter's host-side prep (bmbell23/proxmox), shut pve01 down, do the work, boot it ...
 ~/projects/docker/scripts/maintenance/pve01-maintenance.sh end               # also prints RAM before -> after
 ```
-`start` suspends every `dagu/dags/pve01-*` DAG (Dagu API, read back) and puts an Alertmanager
+`start` posts a "Mongo knows, planned" note in #infra, suspends every `dagu/dags/pve01-*` DAG (Dagu API, read back) and puts an Alertmanager
 silence on `instance=~pve01|k3s01|k3s02|k3s03`. `end` resumes the DAGs, runs `pve01-homelab-pull`
-once, and lifts the silence only if all four targets are `up`; otherwise it leaves the silence to
+once, lifts the silence only if all four targets are `up` (Biscuit posts "back"), otherwise it leaves the silence to
 expire and says so. Skipped scheduled runs are not replayed: a 03:00 restic missed is caught by the next night.
 `status` shows where things stand. Uses `dagu/.drain.env`, so Brandon runs it, not an agent.

@@ -9,6 +9,8 @@
 #                                            run pve01-homelab-pull once, lift the silence
 #   pve01-maintenance.sh status
 #
+# It says so in #infra: Mongo (bad news) at start, "we know, it's planned", so a quiet
+# Mongo means hushed, not broken; Biscuit when it's back, or Mongo when it isn't.
 # Exit codes: 0 done, 1 failed, 3 a pve01 job is still running (start: try again soon).
 # Needs dagu/.drain.env (the same Dagu API credentials as dagu-drain.sh). Agents never read it.
 # State: logs/maintenance/pve01.state (logs/ is gitignored).
@@ -20,6 +22,8 @@ PROM="${MAINT_PROM:-http://localhost:9090/api/v1}"
 AM="${MAINT_AM:-http://localhost:9093/api/v2}"
 ENVF="$ROOT/dagu/.drain.env"
 STATE="$ROOT/logs/maintenance/pve01.state"
+SAY="${MAINT_SAY:-/home/brandon/projects/agent-bus/bin/say}"
+CHANNEL="${MAINT_CHANNEL:-#infra}"
 INSTANCES='pve01|k3s01|k3s02|k3s03'   # Prometheus instance labels behind pve01 (monitoring/prometheus/prometheus.yml)
 
 cmd="${1:-}"; shift || true
@@ -33,7 +37,10 @@ while [ $# -gt 0 ]; do
 done
 case "$cmd" in start|end|status) ;; *) echo "usage: $0 start [--hours 4] | end | status" >&2; exit 2 ;; esac
 
-die() { echo "FAILED: $*"; exit 1; }
+post() {   # post <bot> <message>: never fatal, but say so when it didn't land
+    printf '%s\n' "$2" | "$SAY" "$1" "$CHANNEL" - >/dev/null || echo "(couldn't post to $CHANNEL as $1)"
+}
+die() { echo "FAILED: $*"; post mongo "🦖 **pve01 maintenance** ($cmd) failed: $*"; exit 1; }
 gib() { awk -v b="$1" 'BEGIN { printf "%.1f GiB", b / 1073741824 }'; }
 
 [ -r "$ENVF" ] || die "no $ENVF (see dagu/README.md, 'Recreating or updating Dagu')"
@@ -88,6 +95,7 @@ start)
     echo "silenced instance=~$INSTANCES until $until ($sid)"
     echo "pve01 RAM now: $([ -n "$mem" ] && gib "$mem" || echo unknown)"
     echo "READY: dockerhost won't touch pve01. Peter's side next, then shut it down."
+    post mongo "🦖🔧 *Mongo knows.* **pve01 is down for planned maintenance** until $(date -d "+$hours hours" '+%H:%M'). Alerts for \`pve01\`, \`k3s01-03\` are hushed and the pve01 Dagu jobs are paused, so no RAWR from me about them until then. Still down after that, and I go loud."
     ;;
 
 end)
@@ -110,7 +118,13 @@ end)
     elif [ -n "$sid" ]; then
         echo "silence $sid LEFT ON (expires by itself); rerun '$0 end' once everything is up"
     fi
-    [ "$problems" = 0 ] && rm -f "$STATE" && echo "DONE: pve01 back, jobs resumed."
+    ram="$([ -n "$before" ] && gib "$before" || echo '?') → $([ -n "$after" ] && gib "$after" || echo '?')"
+    if [ "$problems" = 0 ]; then
+        rm -f "$STATE"; echo "DONE: pve01 back, jobs resumed."
+        post biscuit "**pve01 is back** from maintenance. pve01 + k3s01-03 up, RAM $ram, Dagu jobs resumed, alerts live again."
+    else
+        post mongo "🦖 **pve01 maintenance isn't over:** not back: ${down:-some targets missing} ($up_n/4 up). Alerts stay hushed until the silence runs out; rerun \`pve01-maintenance.sh end\` once it's up."
+    fi
     exit "$problems"
     ;;
 esac
