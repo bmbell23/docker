@@ -27,8 +27,10 @@ docker compose up -d
 ```
 - Grafana's first login is `admin` / `admin`, and it forces a new password. Save it in Vaultwarden.
   Anonymous visitors get read-only Viewer access.
-- Mongo: put the Mattermost incoming-webhook URL, alone on one line, in
-  `alertmanager/secrets/mongo_webhook_url` (gitignored). It's read at send time, so no restart is needed.
+- Mongo: Alertmanager posts its standard webhook JSON to `http://agentbus_mongo:9095/alert`,
+  agent-bus's bridge, which posts as @mongo in #infra (docker#96). No secret on this side.
+- The config dirs are mounted as directories, so a merged change is in the container right
+  away; a `/-/reload` applies it. File mounts kept the pre-pull copy (docker#96).
 - Rule or scrape changes: `curl -X POST localhost:9090/-/reload`. Alertmanager: `curl -X POST localhost:9093/-/reload`.
 - Validate before reloading:
   `docker exec prometheus promtool check config /etc/prometheus/prometheus.yml`,
