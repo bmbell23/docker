@@ -1,23 +1,88 @@
 #!/usr/bin/env bash
 # Run by scripts/reconcile.sh when docker's main moves (docker#45's ./deploy contract).
-# The third-party stacks stay manual; the one thing deployed here is Dagu itself (docker#68):
-# when a merge changed the files its container reads at start (compose, config.yaml,
-# ssh_include), drain it and recreate it, checking for a newer image on the way.
-# The drain runs detached: it outlives this reconciler run and waits for it to finish.
+# The third-party stacks stay manual (container-updates.sh bumps their images); two things
+# are deployed here:
+#   monitoring  (docker#104) the config is mounted as folders (docker#96), so a merge is live in
+#               the containers at once and only needs applying: compose changed -> `up -d` (compose
+#               recreates just the services that changed; never `down`); Prometheus rules/config or
+#               alertmanager.yml changed -> check it, then POST /-/reload. A bad config fails the
+#               deploy and the running one stays as it was.
+#   dagu        (docker#68) when a merge changed the files its container reads at start (compose,
+#               config.yaml, ssh_include), drain it and recreate it, checking for a newer image on
+#               the way. The drain runs detached: it outlives this reconciler run and waits for it.
 set -uo pipefail
 cd "$(dirname "$0")"
 
-STAMP=logs/deploy/dagu-applied.sha256
-if [ -f "$STAMP" ] && (cd dagu && sha256sum --quiet -c "../$STAMP") >/dev/null 2>&1; then
-    echo "dagu: config unchanged since the last drain; nothing to deploy"
-    exit 0
-fi
-[ -r dagu/.drain.env ] || { echo "dagu config changed, but dagu/.drain.env is missing: see dagu/README.md"; exit 1; }
+stamp_ok() {   # stamp_ok <name> <tracked paths...>: what's committed there was applied already
+    local f="logs/deploy/$1-applied.sha256"; shift
+    [ "$(cat "$f" 2>/dev/null)" = "$(git ls-files -s -- "$@" | sha256sum | cut -d' ' -f1)" ]
+}
+stamp() {      # stamp <name> <tracked paths...>
+    local f="logs/deploy/$1-applied.sha256"; shift
+    mkdir -p logs/deploy; git ls-files -s -- "$@" | sha256sum | cut -d' ' -f1 > "$f"
+}
 
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-if systemctl --user is-active -q dagu-drain; then
-    echo "dagu: a drain is already running (systemctl --user status dagu-drain)"
-    exit 0
-fi
-systemd-run --user --unit=dagu-drain --collect "$PWD/scripts/dagu-drain.sh" --recreate \
-    && echo "dagu: config changed; drain + recreate started (journalctl --user -u dagu-drain, logs/dagu-drain/)"
+reloaded() {   # reloaded <container> <url> <metric>: up, and its last config load worked (60 s)
+    local i
+    for i in $(seq 30); do
+        docker exec "$1" wget -qO- "$2/metrics" 2>/dev/null | grep -q "^$3 1" && return 0
+        sleep 2
+    done
+    return 1
+}
+
+deploy_monitoring() {
+    local P=monitoring/prometheus A=monitoring/alertmanager/alertmanager.yml C=monitoring/docker-compose.yml
+    local up=0 rc=0
+    stamp_ok mon-compose "$C" && stamp_ok mon-prometheus "$P" && stamp_ok mon-alertmanager "$A" \
+        && { echo "monitoring: config unchanged since the last apply; nothing to deploy"; return 0; }
+    stamp_ok mon-compose "$C" || {
+        echo "monitoring: compose changed; up -d"
+        (cd monitoring && docker compose up -d) || { echo "monitoring: docker compose up -d failed"; return 1; }
+        up=1
+    }
+    if [ "$up" = 1 ] || ! stamp_ok mon-prometheus "$P"; then
+        if ! docker exec prometheus promtool check config /etc/prometheus/prometheus.yml; then
+            echo "monitoring: Prometheus config doesn't check; not reloaded, the old one keeps running"; rc=1
+        else
+            [ "$up" = 1 ] || docker exec prometheus wget -qO- --post-data= http://localhost:9090/-/reload
+            if reloaded prometheus http://localhost:9090 prometheus_config_last_reload_successful; then
+                echo "monitoring: Prometheus config applied"; stamp mon-prometheus "$P"
+            else echo "monitoring: Prometheus didn't load its config"; rc=1; fi
+        fi
+    fi
+    if [ "$up" = 1 ] || ! stamp_ok mon-alertmanager "$A"; then
+        if ! docker exec alertmanager amtool check-config /etc/alertmanager/alertmanager.yml; then
+            echo "monitoring: alertmanager.yml doesn't check; not reloaded, the old one keeps running"; rc=1
+        else
+            [ "$up" = 1 ] || docker exec alertmanager wget -qO- --post-data= http://localhost:9093/-/reload
+            if reloaded alertmanager http://localhost:9093 alertmanager_config_last_reload_successful; then
+                echo "monitoring: Alertmanager config applied"; stamp mon-alertmanager "$A"
+            else echo "monitoring: Alertmanager didn't load its config"; rc=1; fi
+        fi
+    fi
+    [ "$up" = 0 ] || [ "$rc" != 0 ] || stamp mon-compose "$C"
+    return $rc
+}
+
+deploy_dagu() {
+    local STAMP=logs/deploy/dagu-applied.sha256
+    if [ -f "$STAMP" ] && (cd dagu && sha256sum --quiet -c "../$STAMP") >/dev/null 2>&1; then
+        echo "dagu: config unchanged since the last drain; nothing to deploy"
+        return 0
+    fi
+    [ -r dagu/.drain.env ] || { echo "dagu config changed, but dagu/.drain.env is missing: see dagu/README.md"; return 1; }
+
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if systemctl --user is-active -q dagu-drain; then
+        echo "dagu: a drain is already running (systemctl --user status dagu-drain)"
+        return 0
+    fi
+    systemd-run --user --unit=dagu-drain --collect "$PWD/scripts/dagu-drain.sh" --recreate \
+        && echo "dagu: config changed; drain + recreate started (journalctl --user -u dagu-drain, logs/dagu-drain/)"
+}
+
+rc=0
+deploy_monitoring || rc=1
+deploy_dagu || rc=1
+exit $rc
