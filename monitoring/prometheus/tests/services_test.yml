@@ -53,6 +53,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+              owner: daisy
               job: dashboard-cards
             exp_annotations:
               summary: "Prometheus cannot scrape the Dashboard (:8001/metrics); service-down alerts are blind"
