@@ -4,8 +4,9 @@
 # restic) is Peter's, in bmbell23/proxmox; this touches only Dagu and Alertmanager here.
 #
 #   pve01-maintenance.sh start [--hours 4]   pve01 jobs idle? suspend every pve01-* DAG,
-#                                            silence pve01 + k3s01-03 alerts and the k3s
-#                                            services' Dashboard cards, record RAM
+#                                            silence pve01 + k3s01-03 alerts, the k3s
+#                                            services' Dashboard cards and the k3s ingress
+#                                            probes, record RAM
 #   pve01-maintenance.sh end                 nodes back? RAM before/after, resume the DAGs,
 #                                            run pve01-homelab-pull once, lift the silences
 #   pve01-maintenance.sh status
@@ -27,6 +28,7 @@ SAY="${MAINT_SAY:-/home/brandon/projects/agent-bus/bin/say}"
 CHANNEL="${MAINT_CHANNEL:-#infra}"
 INSTANCES='pve01|k3s01|k3s02|k3s03'   # Prometheus instance labels behind pve01 (monitoring/prometheus/prometheus.yml)
 K3S_URLS='.*10\.0\.0\.201.*'          # k3s01's ingress: ServiceDown for these cards has instance=dockerhost (docker#137)
+K3S_ALERTS='K3sIngressDown|K3sNodeMetricsMissing'   # k3s rules whose instance is a URL or absent (docker#141)
 
 cmd="${1:-}"; shift || true
 hours=4
@@ -75,7 +77,7 @@ report() {
     echo "pve01 DAGs:"; for d in $(dags); do echo "  $d  suspended=$(suspended "$d")"; done
     echo "targets (up):"; prom "up{instance=~\"$INSTANCES\"}" | sed 's/^/  /'
     echo "pve01 RAM: $(m=$(memtotal); [ -n "$m" ] && gib "$m" || echo unknown)"
-    [ -f "$STATE" ] && { echo "maintenance started $(state started), silences $(state silence) $(state silence_cards)"; } || echo "not in maintenance"
+    [ -f "$STATE" ] && { echo "maintenance started $(state started), silences $(state silence) $(state silence_cards) $(state silence_k3s)"; } || echo "not in maintenance"
 }
 
 case "$cmd" in
@@ -103,9 +105,14 @@ start)
     [ -n "$cid" ] || die "pve01 alerts are silenced ($sid), but the ServiceDown silence for k3s01's cards failed: they will still page"
     echo "silence_cards=$cid" >>"$STATE"
     echo "silenced ServiceDown url=~$K3S_URLS until $until ($cid)"
+    # k3s.yml rules whose instance isn't pve01/k3s0x: K3sIngressDown's is the probed URL, K3sNodeMetricsMissing has none.
+    kid=$(silence "$(jq -nc --arg re "$K3S_ALERTS" '[{name: "alertname", value: $re, isRegex: true, isEqual: true}]')" "$now" "$until")
+    [ -n "$kid" ] || die "pve01 alerts and cards are silenced ($sid, $cid), but the k3s ingress silence failed: K3sIngressDown will still page"
+    echo "silence_k3s=$kid" >>"$STATE"
+    echo "silenced alertname=~$K3S_ALERTS until $until ($kid)"
     echo "pve01 RAM now: $([ -n "$mem" ] && gib "$mem" || echo unknown)"
     echo "READY: dockerhost won't touch pve01. Peter's side next, then shut it down."
-    post mongo "🦖🔧 *Mongo knows.* **pve01 is down for planned maintenance** until $(date -d "+$hours hours" '+%H:%M'). Alerts for \`pve01\`, \`k3s01-03\` and the k3s services' cards are hushed and the pve01 Dagu jobs are paused, so no RAWR from me about them until then. Still down after that, and I go loud."
+    post mongo "🦖🔧 *Mongo knows.* **pve01 is down for planned maintenance** until $(date -d "+$hours hours" '+%H:%M'). Alerts for \`pve01\`, \`k3s01-03\`, the k3s services' cards and their ingresses are hushed and the pve01 Dagu jobs are paused, so no RAWR from me about them until then. Still down after that, and I go loud."
     ;;
 
 end)
@@ -122,7 +129,7 @@ end)
     done
     curl -sf -m 10 -o /dev/null -X POST "${auth[@]}" -H 'Content-Type: application/json' -d '{}' "$DAGU/dags/pve01-homelab-pull/start" \
         && echo "started pve01-homelab-pull (it posts in #dagu only if it goes red)"
-    for sid in $(state silence) $(state silence_cards); do
+    for sid in $(state silence) $(state silence_cards) $(state silence_k3s); do
         if [ "$problems" = 0 ]; then
             curl -s -m 10 -o /dev/null -X DELETE "$AM/silence/$sid" && echo "silence $sid lifted"
         else
