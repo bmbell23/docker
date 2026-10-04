@@ -43,6 +43,7 @@ pihole/.env
 vaultwarden/data/
 vaultwarden/backups/
 vaultwarden/.env
+monitoring/.env
 youtube-downloader/downloads/
 youtube-downloader/config/
 

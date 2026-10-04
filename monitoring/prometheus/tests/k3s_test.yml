@@ -1,19 +1,49 @@
-# promtool test rules (docker#121); see README.md for the command.
+# promtool test rules (docker#121, docker#123); see README.md for the command.
 rule_files: [../rules/k3s.yml]
 evaluation_interval: 1m
 tests:
   - interval: 1m
     input_series:
+      - series: 'kube_node_status_condition{condition="Ready",status="true",node="k3s01"}'
+        values: '1 0x10'
+      - series: 'kube_node_status_condition{condition="Ready",status="true",node="k3s02"}'
+        values: '1x10'
       - series: 'probe_success{job="k3s-ingress",instance="http://dictionary.10.0.0.201.sslip.io"}'
         values: '1 0x10'
       - series: 'probe_success{job="k3s-ingress",instance="https://rancher.10.0.0.201.sslip.io"}'
         values: '1 0 0 1x8'
+      - series: 'pve_up{id="qemu/201",instance="pve01"}'
+        values: '1 0x10'
+      - series: 'pve_onboot_status{id="qemu/201",instance="pve01"}'
+        values: '1x10'
+      - series: 'pve_up{id="qemu/299",instance="pve01"}'
+        values: '0x10'
+      - series: 'pve_onboot_status{id="qemu/299",instance="pve01"}'
+        values: '0x10'
     alert_rule_test:
       - eval_time: 4m
-        alertname: K3sIngressDown
+        alertname: K3sNodeNotReady
         exp_alerts: []
+      - eval_time: 7m
+        alertname: K3sNodeNotReady
+        exp_alerts:
+          - exp_labels: {severity: critical, condition: Ready, status: "true", node: k3s01}
+            exp_annotations: {summary: "k3s node k3s01 has been NotReady for 5m"}
       - eval_time: 7m
         alertname: K3sIngressDown
         exp_alerts:
           - exp_labels: {severity: critical, job: k3s-ingress, instance: "http://dictionary.10.0.0.201.sslip.io"}
             exp_annotations: {summary: "http://dictionary.10.0.0.201.sslip.io has not answered for 5m"}
+      - eval_time: 7m
+        alertname: VMStopped
+        exp_alerts:
+          - exp_labels: {severity: critical, id: qemu/201, instance: pve01}
+            exp_annotations: {summary: "VM qemu/201 on pve01 is set to run but has been stopped for 5m"}
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: K3sNodeMetricsMissing
+        exp_alerts:
+          - exp_labels: {severity: warning, condition: Ready}
+            exp_annotations: {summary: "No k3s node readiness data for 15m: kube-state-metrics is down or not scraped"}
