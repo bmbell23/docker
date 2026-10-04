@@ -44,6 +44,8 @@ services:
       - /mnt/boston/media/other/Videos/Full:/stash-videos
       # Short-form adult content (RedGIFs, clips, etc.)
       - /mnt/boston/media/other/Videos/Short:/stash-shorts
+      # Dashboard "Add to Stash" video downloads (docker#130, Dashboard#68)
+      - /mnt/boston/media/other/Videos/Downloads:/stash-downloads
       # Non-adult video library
       - /mnt/boston/media/videos:/media-videos
       # Kids video library
