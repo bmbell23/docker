@@ -29,5 +29,6 @@ groups:
         for: 5m
         labels:
           severity: critical
+          owner: daisy
         annotations:
           summary: "Prometheus cannot scrape the Dashboard (:8001/metrics); service-down alerts are blind"

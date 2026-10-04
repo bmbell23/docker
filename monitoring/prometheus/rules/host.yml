@@ -20,6 +20,7 @@ groups:
         for: 5m
         labels:
           severity: critical
+          owner: '{{ if eq $labels.instance "proxmox" }}paul{{ else if or (eq $labels.instance "pve01") (match "^k3s" $labels.instance) }}peter{{ else if eq $labels.job "dashboard-cards" }}daisy{{ else }}dakota{{ end }}'
         annotations:
           summary: "{{ $labels.instance }} {{ $labels.mountpoint }} is {{ $value | humanizePercentage }} full"
 
@@ -61,6 +62,7 @@ groups:
         for: 5m
         labels:
           severity: critical
+          owner: '{{ if eq $labels.instance "proxmox" }}paul{{ else if or (eq $labels.instance "pve01") (match "^k3s" $labels.instance) }}peter{{ else if eq $labels.job "dashboard-cards" }}daisy{{ else }}dakota{{ end }}'
         annotations:
           summary: "{{ $labels.instance }} has {{ $value | humanizePercentage }} memory available"
 
@@ -71,6 +73,7 @@ groups:
         for: 5m
         labels:
           severity: critical
+          owner: '{{ if eq $labels.instance "proxmox" }}paul{{ else if or (eq $labels.instance "pve01") (match "^k3s" $labels.instance) }}peter{{ else if eq $labels.job "dashboard-cards" }}daisy{{ else }}dakota{{ end }}'
         annotations:
           summary: "{{ $labels.job }} on {{ $labels.instance }} has been unreachable for 5m"
 
@@ -83,6 +86,7 @@ groups:
         for: 5m
         labels:
           severity: critical
+          owner: paul
         annotations:
           summary: "{{ $labels.instance }} drive {{ $labels.device }} fails its SMART health check"
 
@@ -91,6 +95,7 @@ groups:
         for: 30m
         labels:
           severity: critical
+          owner: paul
         annotations:
           summary: "{{ $labels.instance }} reports only {{ $value }} of 5 drives to SMART; one stopped answering"
 
@@ -114,6 +119,7 @@ groups:
         for: 15m
         labels:
           severity: critical
+          owner: peter
         annotations:
           summary: "{{ $labels.instance }} restic {{ $labels.repo }}: no good backup for {{ $value | humanizeDuration }}"
 

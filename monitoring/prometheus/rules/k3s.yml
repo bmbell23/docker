@@ -9,6 +9,7 @@ groups:
         for: 5m
         labels:
           severity: critical
+          owner: peter
         annotations:
           summary: "k3s node {{ $labels.node }} has been NotReady for 5m"
       # Fires if kube-state-metrics itself vanishes, so the rule above can't go quiet unnoticed.
@@ -25,6 +26,7 @@ groups:
         for: 5m
         labels:
           severity: critical
+          owner: peter
         annotations:
           summary: "{{ $labels.instance }} has not answered for 5m"
   - name: pve01-vms
@@ -35,5 +37,6 @@ groups:
         for: 5m
         labels:
           severity: critical
+          owner: peter
         annotations:
           summary: "VM {{ $labels.id }} on {{ $labels.instance }} is set to run but has been stopped for 5m"
