@@ -115,6 +115,21 @@ services:
         limits:
           memory: 128M
 
+  # Probes URLs for Prometheus (docker#121): the k3s ingress hosts today.
+  # Scraped over the compose network only; no host port.
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.27.0
+    container_name: blackbox-exporter
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./blackbox:/etc/blackbox:ro   # a directory, same reason (docker#96)
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
 volumes:
   prometheus_data:
   alertmanager_data:

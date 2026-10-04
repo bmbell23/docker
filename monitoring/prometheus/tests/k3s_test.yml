@@ -1,0 +1,19 @@
+# promtool test rules (docker#121); see README.md for the command.
+rule_files: [../rules/k3s.yml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="k3s-ingress",instance="http://dictionary.10.0.0.201.sslip.io"}'
+        values: '1 0x10'
+      - series: 'probe_success{job="k3s-ingress",instance="https://rancher.10.0.0.201.sslip.io"}'
+        values: '1 0 0 1x8'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: K3sIngressDown
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: K3sIngressDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: k3s-ingress, instance: "http://dictionary.10.0.0.201.sslip.io"}
+            exp_annotations: {summary: "http://dictionary.10.0.0.201.sslip.io has not answered for 5m"}
