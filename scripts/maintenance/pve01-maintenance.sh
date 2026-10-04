@@ -4,9 +4,10 @@
 # restic) is Peter's, in bmbell23/proxmox; this touches only Dagu and Alertmanager here.
 #
 #   pve01-maintenance.sh start [--hours 4]   pve01 jobs idle? suspend every pve01-* DAG,
-#                                            silence pve01 + k3s01-03 alerts, record RAM
+#                                            silence pve01 + k3s01-03 alerts and the k3s
+#                                            services' Dashboard cards, record RAM
 #   pve01-maintenance.sh end                 nodes back? RAM before/after, resume the DAGs,
-#                                            run pve01-homelab-pull once, lift the silence
+#                                            run pve01-homelab-pull once, lift the silences
 #   pve01-maintenance.sh status
 #
 # It says so in #infra: Mongo (bad news) at start, "we know, it's planned", so a quiet
@@ -25,6 +26,7 @@ STATE="$ROOT/logs/maintenance/pve01.state"
 SAY="${MAINT_SAY:-/home/brandon/projects/agent-bus/bin/say}"
 CHANNEL="${MAINT_CHANNEL:-#infra}"
 INSTANCES='pve01|k3s01|k3s02|k3s03'   # Prometheus instance labels behind pve01 (monitoring/prometheus/prometheus.yml)
+K3S_URLS='.*10\.0\.0\.201.*'          # k3s01's ingress: ServiceDown for these cards has instance=dockerhost (docker#137)
 
 cmd="${1:-}"; shift || true
 hours=4
@@ -62,13 +64,18 @@ in_flight() { local d; for d in $(dags); do find "$ROOT/dagu/data/proc/$d" -name
 prom() { curl -s -m 10 "$PROM/query" --data-urlencode "query=$1" | jq -r '.data.result[] | "\(.metric.instance) \(.value[1])"' 2>/dev/null; }
 memtotal() { prom 'node_memory_MemTotal_bytes{instance="pve01"}' | awk '{print $2}'; }
 state() { grep -m1 "^$1=" "$STATE" 2>/dev/null | cut -d= -f2-; }
+silence() {   # silence <matchers json> <from> <until>: prints the silence ID, or nothing
+    jq -nc --argjson m "$1" --arg s "$2" --arg e "$3" \
+        '{matchers: $m, startsAt: $s, endsAt: $e, createdBy: "pve01-maintenance.sh", comment: "pve01 maintenance (docker#111)"}' |
+        curl -s -m 10 -X POST -H 'Content-Type: application/json' -d @- "$AM/silences" | jq -r '.silenceID // empty'
+}
 
 report() {
     local d
     echo "pve01 DAGs:"; for d in $(dags); do echo "  $d  suspended=$(suspended "$d")"; done
     echo "targets (up):"; prom "up{instance=~\"$INSTANCES\"}" | sed 's/^/  /'
     echo "pve01 RAM: $(m=$(memtotal); [ -n "$m" ] && gib "$m" || echo unknown)"
-    [ -f "$STATE" ] && { echo "maintenance started $(state started), silence $(state silence)"; } || echo "not in maintenance"
+    [ -f "$STATE" ] && { echo "maintenance started $(state started), silences $(state silence) $(state silence_cards)"; } || echo "not in maintenance"
 }
 
 case "$cmd" in
@@ -86,16 +93,19 @@ start)
         echo "suspended $d"
     done
     now=$(date -u +%FT%TZ); until=$(date -u -d "+$hours hours" +%FT%TZ)
-    sid=$(jq -nc --arg re "$INSTANCES" --arg s "$now" --arg e "$until" \
-        '{matchers: [{name: "instance", value: $re, isRegex: true, isEqual: true}], startsAt: $s, endsAt: $e,
-          createdBy: "pve01-maintenance.sh", comment: "pve01 maintenance (docker#111)"}' |
-        curl -s -m 10 -X POST -H 'Content-Type: application/json' -d @- "$AM/silences" | jq -r '.silenceID // empty')
+    sid=$(silence "$(jq -nc --arg re "$INSTANCES" '[{name: "instance", value: $re, isRegex: true, isEqual: true}]')" "$now" "$until")
     [ -n "$sid" ] || die "DAGs are suspended, but the Alertmanager silence failed: pve01 alerts will still fire"
     echo "silence=$sid" >>"$STATE"
     echo "silenced instance=~$INSTANCES until $until ($sid)"
+    # The Dashboard probes k3s01's services too (Rancher, ArgoCD, Dictionary...): ServiceDown, instance=dockerhost.
+    cid=$(silence "$(jq -nc --arg re "$K3S_URLS" '[{name: "alertname", value: "ServiceDown", isRegex: false, isEqual: true},
+                                                   {name: "url", value: $re, isRegex: true, isEqual: true}]')" "$now" "$until")
+    [ -n "$cid" ] || die "pve01 alerts are silenced ($sid), but the ServiceDown silence for k3s01's cards failed: they will still page"
+    echo "silence_cards=$cid" >>"$STATE"
+    echo "silenced ServiceDown url=~$K3S_URLS until $until ($cid)"
     echo "pve01 RAM now: $([ -n "$mem" ] && gib "$mem" || echo unknown)"
     echo "READY: dockerhost won't touch pve01. Peter's side next, then shut it down."
-    post mongo "🦖🔧 *Mongo knows.* **pve01 is down for planned maintenance** until $(date -d "+$hours hours" '+%H:%M'). Alerts for \`pve01\`, \`k3s01-03\` are hushed and the pve01 Dagu jobs are paused, so no RAWR from me about them until then. Still down after that, and I go loud."
+    post mongo "🦖🔧 *Mongo knows.* **pve01 is down for planned maintenance** until $(date -d "+$hours hours" '+%H:%M'). Alerts for \`pve01\`, \`k3s01-03\` and the k3s services' cards are hushed and the pve01 Dagu jobs are paused, so no RAWR from me about them until then. Still down after that, and I go loud."
     ;;
 
 end)
@@ -112,12 +122,13 @@ end)
     done
     curl -sf -m 10 -o /dev/null -X POST "${auth[@]}" -H 'Content-Type: application/json' -d '{}' "$DAGU/dags/pve01-homelab-pull/start" \
         && echo "started pve01-homelab-pull (it posts in #dagu only if it goes red)"
-    sid=$(state silence)
-    if [ "$problems" = 0 ] && [ -n "$sid" ]; then
-        curl -s -m 10 -o /dev/null -X DELETE "$AM/silence/$sid" && echo "silence $sid lifted"
-    elif [ -n "$sid" ]; then
-        echo "silence $sid LEFT ON (expires by itself); rerun '$0 end' once everything is up"
-    fi
+    for sid in $(state silence) $(state silence_cards); do
+        if [ "$problems" = 0 ]; then
+            curl -s -m 10 -o /dev/null -X DELETE "$AM/silence/$sid" && echo "silence $sid lifted"
+        else
+            echo "silence $sid LEFT ON (expires by itself); rerun '$0 end' once everything is up"
+        fi
+    done
     ram="$([ -n "$before" ] && gib "$before" || echo '?') → $([ -n "$after" ] && gib "$after" || echo '?')"
     if [ "$problems" = 0 ]; then
         rm -f "$STATE"; echo "DONE: pve01 back, jobs resumed."
