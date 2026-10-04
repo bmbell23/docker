@@ -80,3 +80,25 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox-exporter:9115
+
+  # k3s node readiness (docker#123, proxmox#66). A NodePort, so any node answers.
+  - job_name: kube-state-metrics
+    static_configs:
+      - targets: ['10.0.0.201:30808']
+        labels:
+          instance: k3s
+
+  # pve01's VMs through prometheus-pve-exporter (docker#123): read-only PVEAuditor token.
+  - job_name: pve
+    metrics_path: /pve
+    params:
+      module: [default]
+    static_configs:
+      - targets: ['10.0.0.197']
+        labels:
+          instance: pve01
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: pve-exporter:9221

@@ -15,6 +15,14 @@ cAdvisor (dockerhost)  ───────┼─> Prometheus ──rules──
 | `node-exporter` | 9100 (host network) | http://100.69.184.113:9100/metrics |
 | `cadvisor` | (internal) | scraped on the compose network |
 | `blackbox-exporter` | (internal) | probes URLs; job `k3s-ingress` (docker#121) |
+| `pve-exporter` | (internal) | pve01's VM state, read-only PVEAuditor token; job `pve` (docker#123) |
+
+k3s node readiness comes from kube-state-metrics on the cluster (proxmox#66), NodePort
+`10.0.0.201:30808`, job `kube-state-metrics`.
+
+`pve-exporter` reads `monitoring/.env` (gitignored; copy `.env.example`). The token is in
+Vaultwarden as "pve01 monitoring token". Without that file `docker compose` refuses to start
+the stack, so a deploy fails loudly instead of running a blind exporter.
 
 ## Who owns what
 - **This stack, scrape targets, retention:** docker/ (Dakota).

@@ -1,10 +1,24 @@
 # k3s cluster (docker#121, rules drafted by Daisy 2026-10-04).
 # Node *unreachable* is already TargetDown{instance=~"k3s0[1-3]"}.
-# K3sNodeNotReady / K3sNodeMetricsMissing / VMStopped land with their feeds
-# (kube-state-metrics, pve exporter): the absent() rule would page on install.
 groups:
   - name: k3s
     rules:
+      # job="kube-state-metrics" (proxmox#66, NodePort :30808).
+      - alert: K3sNodeNotReady
+        expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "k3s node {{ $labels.node }} has been NotReady for 5m"
+      # Fires if kube-state-metrics itself vanishes, so the rule above can't go quiet unnoticed.
+      - alert: K3sNodeMetricsMissing
+        expr: absent(kube_node_status_condition{condition="Ready"})
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No k3s node readiness data for 15m: kube-state-metrics is down or not scraped"
       # job="k3s-ingress": blackbox_exporter, one target per *.10.0.0.201.sslip.io URL.
       - alert: K3sIngressDown
         expr: probe_success{job="k3s-ingress"} == 0
@@ -13,3 +27,13 @@ groups:
           severity: critical
         annotations:
           summary: "{{ $labels.instance }} has not answered for 5m"
+  - name: pve01-vms
+    rules:
+      # job="pve": prometheus-pve-exporter. A VM set to start on boot that is stopped.
+      - alert: VMStopped
+        expr: (pve_up{id=~"qemu/.*"} == 0) and on(id, instance) (pve_onboot_status == 1)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "VM {{ $labels.id }} on {{ $labels.instance }} is set to run but has been stopped for 5m"
