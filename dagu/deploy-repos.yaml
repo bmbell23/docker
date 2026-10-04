@@ -25,7 +25,7 @@ repos:
   - {name: ArtForge,   path: /home/brandon/projects/ArtForge,   enabled: true}
   - {name: Chess,      path: /home/brandon/projects/Chess,      enabled: true}
   - {name: CodeForge,  path: /home/brandon/projects/CodeForge,  enabled: true}
-  - {name: Dictionary, path: /home/brandon/projects/Dictionary, enabled: true}
+  - {name: Dictionary, path: /home/brandon/projects/Dictionary, enabled: true, deploy: false}   # runs on k3s now (docker#119); a deploy would restart the stopped :8098 container
   - {name: dotfiles,   path: /home/brandon/projects/dotfiles,   enabled: true}
   - {name: FunForge,   path: /home/brandon/projects/FunForge,   enabled: true, apk: build-apk.sh}
   - {name: GreatReads, path: /home/brandon/projects/GreatReads, enabled: true, apk: build-app.sh}
