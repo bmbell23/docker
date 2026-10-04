@@ -14,7 +14,7 @@ cAdvisor (dockerhost)  ───────┼─> Prometheus ──rules──
 | `alertmanager` | 9093 | http://100.69.184.113:9093 |
 | `node-exporter` | 9100 (host network) | http://100.69.184.113:9100/metrics |
 | `cadvisor` | (internal) | scraped on the compose network |
-| `blackbox-exporter` | (internal) | probes URLs; jobs `k3s-ingress` (docker#121) and `services` (docker#127) |
+| `blackbox-exporter` | (internal) | probes URLs; job `k3s-ingress` (docker#121) |
 | `pve-exporter` | (internal) | pve01's VM state, read-only PVEAuditor token; job `pve` (docker#123) |
 
 k3s node readiness comes from kube-state-metrics on the cluster (proxmox#66), NodePort
@@ -62,9 +62,9 @@ Install node_exporter on it (port 9100), then add it to the `node` job in
 Watched now: dockerhost, the Proxmox host (plus SMART), pve01, k3s01-03. Still planned: the GPU exporter once the card is in.
 
 ## Probing a URL
-**A new dockerhost service:** one line in the `services` job in `prometheus/prometheus.yml`,
-`service:` named like its Dashboard card. `ServiceDown` (critical, 5m) pages Mongo when it stops
-answering. Module `http_up`: any answer short of a 5xx is up (docker#127).
+**A new dockerhost service:** give it a Dashboard card. The Dashboard probes every card URL and
+exports `dashboard_card_up` (job `dashboard-cards`); `ServiceDown` (critical, 5m) pages Mongo with
+the service and its owner (docker#127, Dashboard#66).
 
 Anything else: add it to the `k3s-ingress` job's targets (or a new job with the same relabelling) in
 `prometheus/prometheus.yml`. Modules are in `blackbox/blackbox.yml`; `http_2xx` skips cert
