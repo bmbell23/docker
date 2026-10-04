@@ -14,6 +14,7 @@ cAdvisor (dockerhost)  ───────┼─> Prometheus ──rules──
 | `alertmanager` | 9093 | http://100.69.184.113:9093 |
 | `node-exporter` | 9100 (host network) | http://100.69.184.113:9100/metrics |
 | `cadvisor` | (internal) | scraped on the compose network |
+| `blackbox-exporter` | (internal) | probes URLs; job `k3s-ingress` (docker#121) |
 
 ## Who owns what
 - **This stack, scrape targets, retention:** docker/ (Dakota).
@@ -39,6 +40,8 @@ docker compose up -d
 - Validate before reloading:
   `docker exec prometheus promtool check config /etc/prometheus/prometheus.yml`,
   `docker exec alertmanager amtool check-config /etc/alertmanager/alertmanager.yml`.
+- Rule tests live in `prometheus/tests/`:
+  `docker exec -w /etc/prometheus/tests prometheus promtool test rules k3s_test.yml`.
 
 ## Storage
 History lives in the named volumes `monitoring_prometheus_data`, `monitoring_grafana_data`, and
@@ -49,6 +52,11 @@ or 10 GB, whichever comes first. **Never `down -v`**, because it deletes the his
 Install node_exporter on it (port 9100), then add it to the `node` job in
 `prometheus/prometheus.yml` with an `instance:` label. The merge reloads it.
 Watched now: dockerhost, the Proxmox host (plus SMART), pve01, k3s01-03. Still planned: the GPU exporter once the card is in.
+
+## Probing a URL
+Add it to the `k3s-ingress` job's targets (or a new job with the same relabelling) in
+`prometheus/prometheus.yml`. Modules are in `blackbox/blackbox.yml`; `http_2xx` skips cert
+verification on purpose, since it's an up/down check (Rancher's cert is self-signed).
 
 ## Silencing
 Use http://100.69.184.113:9093 → New Silence, for example during planned maintenance.

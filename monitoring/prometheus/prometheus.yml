@@ -61,3 +61,22 @@ scrape_configs:
       - targets: ['10.0.0.159:9633']
         labels:
           instance: proxmox
+
+  # k3s ingress, probed through blackbox_exporter (docker#121). The *.sslip.io
+  # names resolve to k3s01, so this also goes red when k3s01 is down.
+  - job_name: k3s-ingress
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://dictionary.10.0.0.201.sslip.io
+          - http://argocd.10.0.0.201.sslip.io
+          - https://rancher.10.0.0.201.sslip.io
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
