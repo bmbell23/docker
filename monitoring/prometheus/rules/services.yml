@@ -1,0 +1,12 @@
+# dockerhost's services (docker#127). job="services": blackbox_exporter http_up, one target
+# per published port, labelled service=<name>. 5m rides out a deploy's recreate.
+groups:
+  - name: services
+    rules:
+      - alert: ServiceDown
+        expr: probe_success{job="services"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} ({{ $labels.instance }}) has not answered for 5m"

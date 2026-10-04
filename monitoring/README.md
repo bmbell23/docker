@@ -14,7 +14,7 @@ cAdvisor (dockerhost)  ───────┼─> Prometheus ──rules──
 | `alertmanager` | 9093 | http://100.69.184.113:9093 |
 | `node-exporter` | 9100 (host network) | http://100.69.184.113:9100/metrics |
 | `cadvisor` | (internal) | scraped on the compose network |
-| `blackbox-exporter` | (internal) | probes URLs; job `k3s-ingress` (docker#121) |
+| `blackbox-exporter` | (internal) | probes URLs; jobs `k3s-ingress` (docker#121) and `services` (docker#127) |
 | `pve-exporter` | (internal) | pve01's VM state, read-only PVEAuditor token; job `pve` (docker#123) |
 
 k3s node readiness comes from kube-state-metrics on the cluster (proxmox#66), NodePort
@@ -41,7 +41,7 @@ docker compose up -d
 - The config dirs are mounted as directories, so a merged change is in the container right
   away; a `/-/reload` applies it. File mounts kept the pre-pull copy (docker#96).
 - **Merges apply themselves** (docker#104): the reconciler runs the repo's `./deploy`, which checks
-  and reloads Prometheus/Alertmanager when their config changed, and runs `up -d` when the compose
+  and reloads Prometheus/Alertmanager/blackbox_exporter when their config changed, and runs `up -d` when the compose
   file did. A config that fails its check fails the deploy (Mongo says so), and the old config keeps running.
   Stamps: `logs/deploy/mon-*-applied.sha256`.
 - By hand: `curl -X POST localhost:9090/-/reload`. Alertmanager: `curl -X POST localhost:9093/-/reload`.
@@ -49,7 +49,7 @@ docker compose up -d
   `docker exec prometheus promtool check config /etc/prometheus/prometheus.yml`,
   `docker exec alertmanager amtool check-config /etc/alertmanager/alertmanager.yml`.
 - Rule tests live in `prometheus/tests/`:
-  `docker exec -w /etc/prometheus/tests prometheus promtool test rules k3s_test.yml`.
+  `docker exec -w /etc/prometheus/tests prometheus sh -c 'promtool test rules *_test.yml'`.
 
 ## Storage
 History lives in the named volumes `monitoring_prometheus_data`, `monitoring_grafana_data`, and
@@ -62,7 +62,11 @@ Install node_exporter on it (port 9100), then add it to the `node` job in
 Watched now: dockerhost, the Proxmox host (plus SMART), pve01, k3s01-03. Still planned: the GPU exporter once the card is in.
 
 ## Probing a URL
-Add it to the `k3s-ingress` job's targets (or a new job with the same relabelling) in
+**A new dockerhost service:** one line in the `services` job in `prometheus/prometheus.yml`,
+`service:` named like its Dashboard card. `ServiceDown` (critical, 5m) pages Mongo when it stops
+answering. Module `http_up`: any answer short of a 5xx is up (docker#127).
+
+Anything else: add it to the `k3s-ingress` job's targets (or a new job with the same relabelling) in
 `prometheus/prometheus.yml`. Modules are in `blackbox/blackbox.yml`; `http_2xx` skips cert
 verification on purpose, since it's an up/down check (Rancher's cert is self-signed).
 

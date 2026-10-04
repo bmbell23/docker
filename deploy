@@ -5,7 +5,7 @@
 #   monitoring  (docker#104) the config is mounted as folders (docker#96), so a merge is live in
 #               the containers at once and only needs applying: compose changed -> `up -d` (compose
 #               recreates just the services that changed; never `down`); Prometheus rules/config or
-#               alertmanager.yml changed -> check it, then POST /-/reload. A bad config fails the
+#               alertmanager.yml or blackbox.yml changed -> check it, then POST /-/reload. A bad config fails the
 #               deploy and the running one stays as it was.
 #   dagu        (docker#68) when a merge changed the files its container reads at start (compose,
 #               config.yaml, ssh_include), drain it and recreate it, checking for a newer image on
@@ -22,10 +22,23 @@ stamp() {      # stamp <name> <tracked paths...>
     mkdir -p logs/deploy; git ls-files -s -- "$@" | sha256sum | cut -d' ' -f1 > "$f"
 }
 
-reloaded() {   # reloaded <container> <url> <metric>: up, and its last config load worked (60 s)
-    local i
+metric() {     # metric <container> <url> <name>: its value, empty while it doesn't answer
+    docker exec "$1" wget -qO- "$2/metrics" 2>/dev/null | awk -v m="$3" '$1 == m { printf "%.3f\n", $2 }'
+}
+
+# reload <container> <url> <prefix>: POST /-/reload and wait (60 s) until a load *newer than the
+# request* worked. Always reload: `up -d` only recreates the services whose compose entry changed,
+# and the old success flag stays 1 on a config that never loaded (docker#127).
+reload() {
+    local i before now
+    for i in $(seq 30); do before=$(metric "$1" "$2" "$3_last_reload_success_timestamp_seconds"); [ -n "$before" ] && break; sleep 2; done
+    [ -n "$before" ] || return 1
+    sleep 1   # the timestamp has 1 s resolution: a fresh container could tie with its own reload
+    docker exec "$1" wget -qO- --post-data= "$2/-/reload" >/dev/null || return 1
     for i in $(seq 30); do
-        docker exec "$1" wget -qO- "$2/metrics" 2>/dev/null | grep -q "^$3 1" && return 0
+        now=$(metric "$1" "$2" "$3_last_reload_success_timestamp_seconds")
+        awk -v ok="$(metric "$1" "$2" "$3_last_reload_successful")" -v a="$now" -v b="$before" \
+            'BEGIN { exit !(ok == 1 && a != "" && a > b) }' && return 0
         sleep 2
     done
     return 1
@@ -33,20 +46,30 @@ reloaded() {   # reloaded <container> <url> <metric>: up, and its last config lo
 
 deploy_monitoring() {
     local P=monitoring/prometheus A=monitoring/alertmanager/alertmanager.yml C=monitoring/docker-compose.yml
+    local B=monitoring/blackbox/blackbox.yml
     local up=0 rc=0
-    stamp_ok mon-compose "$C" && stamp_ok mon-prometheus "$P" && stamp_ok mon-alertmanager "$A" \
+    stamp_ok mon-compose "$C" && stamp_ok mon-prometheus "$P" && stamp_ok mon-alertmanager "$A" && stamp_ok mon-blackbox "$B" \
         && { echo "monitoring: config unchanged since the last apply; nothing to deploy"; return 0; }
     stamp_ok mon-compose "$C" || {
         echo "monitoring: compose changed; up -d"
         (cd monitoring && docker compose up -d) || { echo "monitoring: docker compose up -d failed"; return 1; }
         up=1
     }
-    if [ "$up" = 1 ] || ! stamp_ok mon-prometheus "$P"; then
+    # Blackbox first: Prometheus may probe with a module that's new in this merge (docker#127).
+    if [ "$up" = 1 ] || ! stamp_ok mon-blackbox "$B"; then
+        if ! docker exec blackbox-exporter blackbox_exporter --config.file=/etc/blackbox/blackbox.yml --config.check; then
+            echo "monitoring: blackbox.yml doesn't check; not reloaded, the old one keeps running"; rc=1
+        elif reload blackbox-exporter http://localhost:9115 blackbox_exporter_config; then
+            echo "monitoring: blackbox_exporter config applied"; stamp mon-blackbox "$B"
+        else echo "monitoring: blackbox_exporter didn't load its config"; rc=1; fi
+    fi
+    if [ "$rc" != 0 ]; then
+        echo "monitoring: Prometheus not reloaded either; its probes may need blackbox's new config"
+    elif [ "$up" = 1 ] || ! stamp_ok mon-prometheus "$P"; then
         if ! docker exec prometheus promtool check config /etc/prometheus/prometheus.yml; then
             echo "monitoring: Prometheus config doesn't check; not reloaded, the old one keeps running"; rc=1
         else
-            [ "$up" = 1 ] || docker exec prometheus wget -qO- --post-data= http://localhost:9090/-/reload
-            if reloaded prometheus http://localhost:9090 prometheus_config_last_reload_successful; then
+            if reload prometheus http://localhost:9090 prometheus_config; then
                 echo "monitoring: Prometheus config applied"; stamp mon-prometheus "$P"
             else echo "monitoring: Prometheus didn't load its config"; rc=1; fi
         fi
@@ -55,8 +78,7 @@ deploy_monitoring() {
         if ! docker exec alertmanager amtool check-config /etc/alertmanager/alertmanager.yml; then
             echo "monitoring: alertmanager.yml doesn't check; not reloaded, the old one keeps running"; rc=1
         else
-            [ "$up" = 1 ] || docker exec alertmanager wget -qO- --post-data= http://localhost:9093/-/reload
-            if reloaded alertmanager http://localhost:9093 alertmanager_config_last_reload_successful; then
+            if reload alertmanager http://localhost:9093 alertmanager_config; then
                 echo "monitoring: Alertmanager config applied"; stamp mon-alertmanager "$A"
             else echo "monitoring: Alertmanager didn't load its config"; rc=1; fi
         fi

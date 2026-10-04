@@ -1,0 +1,23 @@
+# promtool test rules (docker#127); see README.md for the command.
+rule_files: [../rules/services.yml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="services",service="romm",instance="http://100.69.184.113:8080/"}'
+        values: '1 0x10'
+      # a recreate during a deploy: down 3m, then back
+      - series: 'probe_success{job="services",service="jackett",instance="http://100.69.184.113:9117/"}'
+        values: '1 0 0 0 1x7'
+      # another job's probes aren't ServiceDown
+      - series: 'probe_success{job="k3s-ingress",instance="http://argocd.10.0.0.201.sslip.io"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ServiceDown
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: services, service: romm, instance: "http://100.69.184.113:8080/"}
+            exp_annotations: {summary: "romm (http://100.69.184.113:8080/) has not answered for 5m"}

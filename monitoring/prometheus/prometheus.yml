@@ -102,3 +102,51 @@ scrape_configs:
         target_label: __param_target
       - target_label: __address__
         replacement: pve-exporter:9221
+
+  # dockerhost's services, probed at the address people open (docker#127). Catches what
+  # cAdvisor can't: a crash loop (it keeps the first start time through in-place restarts)
+  # and a container that's up but unreachable (Jackett pinned to a dead VPN namespace).
+  # New service: one line here, named like its Dashboard card.
+  - job_name: services
+    metrics_path: /probe
+    params:
+      module: [http_up]
+    static_configs:
+      - {targets: ['http://100.69.184.113:8001/'], labels: {service: dashboard}}
+      - {targets: ['http://100.69.184.113:8002/'], labels: {service: wordforge}}
+      - {targets: ['http://100.69.184.113:8003/'], labels: {service: artforge}}
+      - {targets: ['http://100.69.184.113:8004/'], labels: {service: lifeforge}}
+      - {targets: ['http://100.69.184.113:8005/'], labels: {service: museforge-studio}}
+      - {targets: ['http://100.69.184.113:8006/'], labels: {service: funforge}}
+      - {targets: ['http://100.69.184.113:8008/'], labels: {service: pokevault}}
+      - {targets: ['http://100.69.184.113:8009/'], labels: {service: mealforge}}
+      - {targets: ['http://100.69.184.113:8010/'], labels: {service: nerdnews}}
+      - {targets: ['http://100.69.184.113:8011/'], labels: {service: chess}}
+      - {targets: ['http://100.69.184.113:8012/'], labels: {service: webforge-releases}}
+      - {targets: ['http://100.69.184.113:8013/'], labels: {service: webforge-sync}}
+      - {targets: ['http://100.69.184.113:8014/'], labels: {service: dagu}}
+      - {targets: ['http://100.69.184.113:8015/'], labels: {service: mattermost}}
+      - {targets: ['http://100.69.184.113:8016/'], labels: {service: grafana}}
+      - {targets: ['http://100.69.184.113:8090/'], labels: {service: greatreads}}
+      - {targets: ['http://100.69.184.113:8092/'], labels: {service: greatreads-reader}}
+      - {targets: ['http://100.69.184.113:5007/'], labels: {service: libby}}
+      - {targets: ['http://100.69.184.113:8080/'], labels: {service: romm}}
+      - {targets: ['http://100.69.184.113:9117/'], labels: {service: jackett}}
+      - {targets: ['http://100.69.184.113:2285/'], labels: {service: qbittorrent}}
+      - {targets: ['http://100.69.184.113:8096/'], labels: {service: jellyfin}}
+      - {targets: ['http://100.69.184.113:13378/'], labels: {service: audiobookshelf}}
+      # immich (:2283) waits on docker#128: containers can't reach it, so it would page on install.
+      - {targets: ['http://100.69.184.113:8083/'], labels: {service: calibre}}
+      - {targets: ['http://100.69.184.113:8084/'], labels: {service: calibre-web}}
+      - {targets: ['http://100.69.184.113:8222/'], labels: {service: vaultwarden}}
+      - {targets: ['http://100.69.184.113:8053/'], labels: {service: pihole}}
+      - {targets: ['http://100.69.184.113:6595/'], labels: {service: deemix}}
+      - {targets: ['http://100.69.184.113:8998/'], labels: {service: youtube-downloader}}
+      - {targets: ['http://100.69.184.113:9999/'], labels: {service: stash}}
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

@@ -10,3 +10,15 @@ modules:
       follow_redirects: true
       tls_config:
         insecure_skip_verify: true
+
+  # "Is it answering?" for dockerhost's own services (docker#127). Any HTTP answer short of a
+  # 5xx counts: login redirects, a bare 403/404 at / (WebForge, Pi-hole) and Calibre-Web's 400
+  # are all a live app. Refused, timed out, or 5xx is down. Redirects aren't followed, so a
+  # login page on another host can't stand in for the app.
+  http_up:
+    prober: http
+    timeout: 10s
+    http:
+      preferred_ip_protocol: ip4
+      follow_redirects: false
+      valid_status_codes: [200, 201, 204, 301, 302, 303, 307, 308, 400, 401, 403, 404, 405]
