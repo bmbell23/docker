@@ -10,6 +10,10 @@
 #   dagu        (docker#68) when a merge changed the files its container reads at start (compose,
 #               config.yaml, ssh_include), drain it and recreate it, checking for a newer image on
 #               the way. The drain runs detached: it outlives this reconciler run and waits for it.
+#   stacks      (docker#132) opted-in third-party stacks: when the files their containers read at
+#               start change (compose, Dockerfile, mounted config), `up -d --build --force-recreate`.
+#               Forced because single-file mounts keep the pre-pull copy (docker#96). First sight
+#               of a stack only stamps it. A recreate cuts off whatever the container was doing.
 set -uo pipefail
 cd "$(dirname "$0")"
 
@@ -104,7 +108,32 @@ deploy_dagu() {
         && echo "dagu: config changed; drain + recreate started (journalctl --user -u dagu-drain, logs/dagu-drain/)"
 }
 
+# Opted-in stacks: <dir>:<files its containers read at start>. Docs and helper scripts don't count.
+STACKS=(
+    "youtube-downloader:docker-compose.yml Dockerfile yt-dlp.conf config.yml"
+)
+
+deploy_stacks() {
+    local entry dir f files rc=0
+    for entry in "${STACKS[@]}"; do
+        dir=${entry%%:*}; files=()
+        for f in ${entry#*:}; do files+=("$dir/$f"); done
+        stamp_ok "stack-$dir" "${files[@]}" && { echo "$dir: unchanged since the last apply"; continue; }
+        if [ ! -f "logs/deploy/stack-$dir-applied.sha256" ]; then
+            stamp "stack-$dir" "${files[@]}"; echo "$dir: first sight; stamped, not recreated"; continue
+        fi
+        echo "$dir: config changed; up -d --build --force-recreate"
+        if (cd "$dir" && docker compose up -d --build --force-recreate); then
+            stamp "stack-$dir" "${files[@]}"
+        else
+            echo "$dir: docker compose up -d failed"; rc=1
+        fi
+    done
+    return $rc
+}
+
 rc=0
 deploy_monitoring || rc=1
 deploy_dagu || rc=1
+deploy_stacks || rc=1
 exit $rc
