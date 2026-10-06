@@ -4,9 +4,8 @@
 # restic) is Peter's, in bmbell23/proxmox; this touches only Dagu and Alertmanager here.
 #
 #   pve01-maintenance.sh start [--hours 4]   pve01 jobs idle? suspend every pve01-* DAG,
-#                                            silence pve01 + k3s01-03 alerts, the k3s
-#                                            services' Dashboard cards and the k3s ingress
-#                                            probes, record RAM
+#                                            silence pve01 + k3s01-03 alerts, the K3s* rules
+#                                            and the k3s services' Dashboard cards, record RAM
 #   pve01-maintenance.sh end                 nodes back? RAM before/after, resume the DAGs,
 #                                            run pve01-homelab-pull once, lift the silences
 #   pve01-maintenance.sh status
@@ -27,8 +26,9 @@ STATE="$ROOT/logs/maintenance/pve01.state"
 SAY="${MAINT_SAY:-/home/brandon/projects/agent-bus/bin/say}"
 CHANNEL="${MAINT_CHANNEL:-#infra}"
 INSTANCES='pve01|k3s01|k3s02|k3s03'   # Prometheus instance labels behind pve01 (monitoring/prometheus/prometheus.yml)
+HUSHED="$INSTANCES|k3s"               # + kube-state-metrics, scraped as instance=k3s (docker#139)
 K3S_URLS='.*10\.0\.0\.201.*'          # k3s01's ingress: ServiceDown for these cards has instance=dockerhost (docker#137)
-K3S_ALERTS='K3sIngressDown|K3sNodeMetricsMissing'   # k3s rules whose instance is a URL or absent (docker#141)
+K3S_ALERTS='K3s.*'                    # monitoring/prometheus/rules/k3s.yml: all k3s-only; K3sIngressDown's instance is a URL (docker#139)
 
 cmd="${1:-}"; shift || true
 hours=4
@@ -95,24 +95,23 @@ start)
         echo "suspended $d"
     done
     now=$(date -u +%FT%TZ); until=$(date -u -d "+$hours hours" +%FT%TZ)
-    sid=$(silence "$(jq -nc --arg re "$INSTANCES" '[{name: "instance", value: $re, isRegex: true, isEqual: true}]')" "$now" "$until")
+    sid=$(silence "$(jq -nc --arg re "$HUSHED" '[{name: "instance", value: $re, isRegex: true, isEqual: true}]')" "$now" "$until")
     [ -n "$sid" ] || die "DAGs are suspended, but the Alertmanager silence failed: pve01 alerts will still fire"
     echo "silence=$sid" >>"$STATE"
-    echo "silenced instance=~$INSTANCES until $until ($sid)"
+    echo "silenced instance=~$HUSHED until $until ($sid)"
     # The Dashboard probes k3s01's services too (Rancher, ArgoCD, Dictionary...): ServiceDown, instance=dockerhost.
     cid=$(silence "$(jq -nc --arg re "$K3S_URLS" '[{name: "alertname", value: "ServiceDown", isRegex: false, isEqual: true},
                                                    {name: "url", value: $re, isRegex: true, isEqual: true}]')" "$now" "$until")
     [ -n "$cid" ] || die "pve01 alerts are silenced ($sid), but the ServiceDown silence for k3s01's cards failed: they will still page"
     echo "silence_cards=$cid" >>"$STATE"
     echo "silenced ServiceDown url=~$K3S_URLS until $until ($cid)"
-    # k3s.yml rules whose instance isn't pve01/k3s0x: K3sIngressDown's is the probed URL, K3sNodeMetricsMissing has none.
     kid=$(silence "$(jq -nc --arg re "$K3S_ALERTS" '[{name: "alertname", value: $re, isRegex: true, isEqual: true}]')" "$now" "$until")
-    [ -n "$kid" ] || die "pve01 alerts and cards are silenced ($sid, $cid), but the k3s ingress silence failed: K3sIngressDown will still page"
+    [ -n "$kid" ] || die "pve01 alerts and cards are silenced ($sid $cid), but the K3s* silence failed: Rancher's warm-up will still page"
     echo "silence_k3s=$kid" >>"$STATE"
     echo "silenced alertname=~$K3S_ALERTS until $until ($kid)"
     echo "pve01 RAM now: $([ -n "$mem" ] && gib "$mem" || echo unknown)"
     echo "READY: dockerhost won't touch pve01. Peter's side next, then shut it down."
-    post mongo "🦖🔧 *Mongo knows.* **pve01 is down for planned maintenance** until $(date -d "+$hours hours" '+%H:%M'). Alerts for \`pve01\`, \`k3s01-03\`, the k3s services' cards and their ingresses are hushed and the pve01 Dagu jobs are paused, so no RAWR from me about them until then. Still down after that, and I go loud."
+    post mongo "🦖🔧 *Mongo knows.* **pve01 is down for planned maintenance** until $(date -d "+$hours hours" '+%H:%M'). Alerts for \`pve01\`, \`k3s01-03\`, the k3s cluster and the k3s services' cards are hushed and the pve01 Dagu jobs are paused, so no RAWR from me about them until then. Still down after that, and I go loud."
     ;;
 
 end)

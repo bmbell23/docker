@@ -93,9 +93,10 @@ Wrap the downtime so it pages nobody, and prove it came back:
 ~/projects/docker/scripts/maintenance/pve01-maintenance.sh end               # also prints RAM before -> after
 ```
 `start` posts a "Mongo knows, planned" note in #infra, suspends every `dagu/dags/pve01-*` DAG (Dagu API, read back) and puts an Alertmanager
-silence on `instance=~pve01|k3s01|k3s02|k3s03`, plus a second one on `alertname="ServiceDown"`, `url=~".*10\.0\.0\.201.*"`
-(the Dashboard probes k3s01's services too, and those alerts carry `instance=dockerhost`; docker#137).
+silence on `instance=~pve01|k3s01|k3s02|k3s03|k3s`, a second one on `alertname="ServiceDown"`, `url=~".*10\.0\.0\.201.*"`
+(the Dashboard probes k3s01's services too, and those alerts carry `instance=dockerhost`; docker#137), and a third on
+`alertname=~"K3s.*"` (`K3sIngressDown`'s instance is the probed URL, `K3sNodeMetricsMissing` has none; docker#139).
 `end` resumes the DAGs, runs `pve01-homelab-pull`
-once, lifts both silences only if all four targets are `up` (Biscuit posts "back"), otherwise it leaves them to
+once, lifts all three silences only if all four targets are `up` (Biscuit posts "back"), otherwise it leaves them to
 expire and says so. Skipped scheduled runs are not replayed: a 03:00 restic missed is caught by the next night.
 `status` shows where things stand. Uses `dagu/.drain.env`, so Brandon runs it, not an agent.
