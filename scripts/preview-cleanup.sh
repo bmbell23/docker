@@ -6,13 +6,15 @@
 # named <project>_pr<N>, labelled dashboard.preview.project=<card key> and
 # dashboard.preview.pr=<N>. Scope guard: a container is touched only if it has both
 # labels, its name is <something>_pr<N> with the same N, and its compose project is
-# that same name. Nothing else, ever: no prod container, no volume.
+# that same name, or (docker#147) a project whose every container is a preview of the
+# same card and PR. Nothing else, ever: no prod container, no volume.
 #
 # Repo: the dashboard.preview.repo label (owner/name) if set, else the `repo` of the
 # Dashboard card whose key, name or preview_names matches (Dashboard/static/services.json).
 # MERGED or CLOSED: remove the project's containers and networks, plus images built
 # for the preview (<project>_pr<N>-*); shared images like the prod one stay. OPEN:
-# left alone, running or stopped. Can't resolve: touched nothing, alerted once.
+# left alone, running or stopped. Can't resolve: touched nothing, alerted once, and
+# once more if its PR is merged or closed.
 #
 # Then, only if something was removed or deployed since the last time:
 # dangling images and build cache older than 24 h. Never `system prune -a`.
@@ -55,24 +57,63 @@ for s in json.load(open(sys.argv[1])).get("services", []):
 EOF
 }
 
+pr_state() {   # pr_state <card key> <pr> <repo label>: MERGED/CLOSED/OPEN, empty if unknown
+    local repo="${3:-$(repo_for "$1")}"
+    [ -n "$repo" ] && gh pr view "$2" -R "$repo" --json state -q .state 2>/dev/null
+}
+
+# A compose project named other than the container (no `name:` line, docker#147) is still
+# ours if every container in it is a preview of the same card and PR. Any other container
+# in there, labelled or not, and it isn't.
+whole_project_is_preview() {   # whole_project_is_preview <compose project> <card key> <pr>
+    local n p r any=0
+    [ -n "$1" ] || return 1
+    while IFS='|' read -r n p r; do
+        [ -n "$n" ] || continue
+        any=1
+        [ "$p" = "$2" ] && [ "$r" = "$3" ] && [[ "$n" =~ _pr$3$ ]] || return 1
+    done < <(docker ps -a --filter "label=com.docker.compose.project=$1" \
+               --format '{{.Names}}|{{.Label "dashboard.preview.project"}}|{{.Label "dashboard.preview.pr"}}')
+    [ "$any" = 1 ]
+}
+
 removed=0
+declare -A done_proj=()
 while IFS='|' read -r name project pr repo cproj; do   # not tabs: read merges empty tab fields
     [ -n "$name" ] || continue
-    if ! [[ "$name" =~ ^[a-z0-9][a-z0-9-]*_pr([0-9]+)$ ]] || [ "${BASH_REMATCH[1]}" != "$pr" ] || [ "$cproj" != "$name" ]; then
-        alert_once "$name" "labelled as a preview but isn't named <project>_pr<N> with matching labels"; continue
+    [ -n "$cproj" ] && [ -n "${done_proj[$cproj]:-}" ] && continue
+    if ! [[ "$name" =~ ^[a-z0-9][a-z0-9-]*_pr([0-9]+)$ ]] || [ "${BASH_REMATCH[1]}" != "$pr" ] \
+        || { [ "$cproj" != "$name" ] && ! whole_project_is_preview "$cproj" "$project" "$pr"; }; then
+        # Once the PR is done, say so again with the line to clear it: the first alert went
+        # out at creation, long before anyone could act on it (docker#147).
+        state=$(pr_state "$project" "$pr" "$repo")
+        if [ "$state" = MERGED ] || [ "$state" = CLOSED ]; then
+            mates=$(docker ps -a --filter "label=com.docker.compose.project=${cproj:-none}" --format '{{.Names}}' | paste -sd' ')
+            alert_once "$name" "PR #$pr is ${state,,} but the guard won't touch it (compose project \`${cproj:-none}\`: ${mates:-$name}). Check, then: \`docker rm -f ${mates:-$name}\`"
+        else
+            alert_once "$name" "labelled as a preview but isn't named <project>_pr<N> with matching labels"
+        fi
+        continue
     fi
     [ -n "$repo" ] || repo=$(repo_for "$project")
     [ -n "$repo" ] || { alert_once "$name" "no repo for card \`$project\` (set label dashboard.preview.repo=owner/name)"; continue; }
     state=$(gh pr view "$pr" -R "$repo" --json state -q .state 2>/dev/null) \
         || { alert_once "$name" "couldn't look up $repo#$pr on GitHub"; continue; }
     [ "$state" = MERGED ] || [ "$state" = CLOSED ] || continue
-    rm -f "$OUT/.preview-alerted-$name"
+    done_proj[$cproj]=1
 
     # Everything in that compose project (a preview may have its own db), then its networks
     # and only the images built for it. No -v: volumes stay.
-    mapfile -t ids < <(docker ps -aq --filter "label=com.docker.compose.project=$name")
-    mapfile -t imgs < <(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "^${name}[-_]" || true)
-    mapfile -t nets < <(docker network ls -q --filter "label=com.docker.compose.project=$name")
+    mapfile -t ids < <(docker ps -aq --filter "label=com.docker.compose.project=$cproj")
+    for id in "${ids[@]}"; do   # clear every container's alert marker, not just this one's
+        rm -f "$OUT/.preview-alerted-$(docker inspect -f '{{.Name}}' "$id" | sed 's#^/##')"
+    done
+    # Images: <name>-* as before, plus what these containers run if it was built for this
+    # project (<compose project>-<service>). Nothing else, so a loose name can't widen it.
+    mapfile -t imgs < <({ docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "^${name}[-_]"
+                          [ ${#ids[@]} -gt 0 ] && docker inspect -f '{{.Config.Image}}' "${ids[@]}" \
+                              | grep -E "^${cproj}-" | sed '/:/!s/$/:latest/'; } | sort -u)
+    mapfile -t nets < <(docker network ls -q --filter "label=com.docker.compose.project=$cproj")
     [ ${#ids[@]} -gt 0 ] && run docker rm -f "${ids[@]}" >/dev/null
     [ ${#nets[@]} -gt 0 ] && { run docker network rm "${nets[@]}" >/dev/null || true; }
     [ ${#imgs[@]} -gt 0 ] && { run docker image rm "${imgs[@]}" >/dev/null || true; }
