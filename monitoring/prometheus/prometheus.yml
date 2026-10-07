@@ -103,6 +103,13 @@ scrape_configs:
       - target_label: __address__
         replacement: pve-exporter:9221
 
+  # Rusty the medic (docker#143): if he's down, remedy alerts reach nobody. MedicDown pages.
+  - job_name: medic
+    static_configs:
+      - targets: ['dockerhost:9097']
+        labels:
+          instance: dockerhost
+
   # dockerhost's services (docker#127): the Dashboard probes every card URL in its
   # services.json every 60s at the address people open, and exports dashboard_card_up
   # with name/url/owner (Dashboard#66). A new card is watched the moment it's added.
