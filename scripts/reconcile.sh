@@ -73,7 +73,10 @@ log() { echo "[$name] $*"; }
 post() {   # post biscuit|mongo <msg>: notifiers, not agents; cost nothing, wake nobody.
             # Bad news is Mongo's, never Biscuit's (docker#101, agent-bus #158).
     if [ "$dry" = 1 ]; then echo "[dry-run] would post as $1: $2"; return 0; fi
+    # SAY_PAGE=<repo> SAY_ALERT=<name> in front also pages the repo's owner (agent-bus #182, docker#154).
+    # bin/say refuses a repo with no owning agent; the alert still goes out, just unpaged.
     printf '%s\n' "$2" | "$SAY" "$1" "$CHANNEL" - \
+        || { [ -n "${SAY_PAGE:-}" ] && printf '%s\n' "$2" | SAY_PAGE= "$SAY" "$1" "$CHANNEL" -; } \
         || { echo "ALERT NOT DELIVERED: $2" >&2; logger -t reconcile "ALERT NOT DELIVERED: $2"; }
 }
 
@@ -95,7 +98,7 @@ settle() {   # settle <status> <message> [log] [rollback]
     local was was_org; was=$(prev status); was_org=$(prev origin_sha)
     case "$1" in
     ok) case "$was" in failed|skipped-*) post biscuit "\`$name\` is back in step with main (${origin:0:7})." ;; esac ;;
-    *)  [ "$was" = "$1" ] && [ "$was_org" = "${origin:0:7}" ] || post mongo "@brandon \`$name\` $1: $2 $DASH" ;;
+    *)  [ "$was" = "$1" ] && [ "$was_org" = "${origin:0:7}" ] || SAY_PAGE="$name" SAY_ALERT="reconcile-$1" post mongo "@brandon \`$name\` $1: $2 $DASH" ;;
     esac
     record "$@"
 }
@@ -280,7 +283,7 @@ build() {   # build apk|win
     [ "$built" = "$sha" ] && return 0
     [ "$(prev "${k}_status")" = failed ] && [ "$(prev "${k}_tried")" = "$sha" ] && return 0   # alerted already; next merge retries
     case "$(date +%H)" in 01|02|03) log "$k waits: 01:00-04:00 is the backup window"; return 0 ;; esac
-    [ -x "$script" ] || { [ "$(prev "${k}_tried")" = "$sha" ] || post mongo "@brandon ❌ \`$name\` $what build failed: \`$script\` isn't an executable file in the repo. $DASH"
+    [ -x "$script" ] || { [ "$(prev "${k}_tried")" = "$sha" ] || SAY_PAGE="$name" SAY_ALERT=reconcile-build post mongo "@brandon ❌ \`$name\` $what build failed: \`$script\` isn't an executable file in the repo. $DASH"
                           record_build "$k" failed "$built" "no executable $script"; return 0; }
     v=$(tr -d '[:space:]' < version.txt 2>/dev/null)
     if [ "$dry" = 1 ]; then log "[dry-run] would run ./$script for ${v:+v$v }($sha)"; return 0; fi
@@ -306,7 +309,7 @@ build() {   # build apk|win
             post biscuit "@brandon 🪟 **$name** $ver installer rebuilt${link:+ · $link} ($sha)"
         fi ;;
     75) log "$k: nothing to rebuild for $sha"; record_build "$k" ok "$sha" "nothing to rebuild ($sha)" "$lg"; return 0 ;;
-    *)  post mongo "@brandon ❌ \`$name\` $what build failed: \`./$script\` exited $rc for ${v:+v$v }($sha). The old one is still served. Log: \`$lg\`
+    *)  SAY_PAGE="$name" SAY_ALERT=reconcile-build post mongo "@brandon ❌ \`$name\` $what build failed: \`./$script\` exited $rc for ${v:+v$v }($sha). The old one is still served. Log: \`$lg\`
 \`\`\`
 $(tail -n 8 "$lg")
 \`\`\`"
@@ -314,7 +317,7 @@ $(tail -n 8 "$lg")
     esac
     # The next merge would stop at skipped-dirty anyway; say why now.
     [ -z "$(git status --porcelain --untracked-files=no)" ] \
-        || post mongo "@brandon \`$name\`: \`./$script\` changed tracked files in the main clone, so the next merge will skip it until that's fixed: $(git status --porcelain --untracked-files=no | head -5 | awk '{print $2}' | paste -sd' ')"
+        || SAY_PAGE="$name" SAY_ALERT=reconcile-build post mongo "@brandon \`$name\`: \`./$script\` changed tracked files in the main clone, so the next merge will skip it until that's fixed: $(git status --porcelain --untracked-files=no | head -5 | awk '{print $2}' | paste -sd' ')"
 }
 
 announce_deploys() {   # docker#47: most deploys are a hand/agent `docker compose up`, not ./deploy
