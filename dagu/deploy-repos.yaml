@@ -23,7 +23,7 @@ repos:
   - {name: docker,     path: /home/brandon/projects/docker,     enabled: true}
   - {name: agent-bus,  path: /home/brandon/projects/agent-bus,  enabled: true}
   - {name: ArtForge,   path: /home/brandon/projects/ArtForge,   enabled: true}
-  - {name: Chess,      path: /home/brandon/projects/Chess,      enabled: true}
+  - {name: Chess,      path: /home/brandon/projects/Chess,      enabled: true, deploy: false}        # runs on k3s now (docker#150); a deploy would restart the stopped :8011 container
   - {name: CodeForge,  path: /home/brandon/projects/CodeForge,  enabled: true}
   - {name: Dictionary, path: /home/brandon/projects/Dictionary, enabled: true, deploy: false}   # runs on k3s now (docker#119); a deploy would restart the stopped :8098 container
   - {name: dotfiles,   path: /home/brandon/projects/dotfiles,   enabled: true}
