@@ -70,5 +70,13 @@ Anything else: add it to the `k3s-ingress` job's targets (or a new job with the 
 `prometheus/prometheus.yml`. Modules are in `blackbox/blackbox.yml`; `http_2xx` skips cert
 verification on purpose, since it's an up/down check (Rancher's cert is self-signed).
 
+## The medic (Rusty)
+Alerts with a `remedy` label go to the medic (`scripts/medic/medic.py`, `systemd/medic.service`,
+docker#143) instead of Mongo. He runs one allowlisted fix from `scripts/medic/targets.yaml`
+(2 tries, 5 min apart, at most 3 attempts per target per 24 h), narrates in #infra as @rusty, and
+if it's still down forwards the alert to Mongo with a `🩺 Medic tried: …` line. Today only
+`ServiceDown` carries `remedy: recreate`, for the cards listed in `rules/services.yml`. If the
+medic isn't answering, `MedicDown` pages directly. Tests: `python3 tests/medic_test.py`.
+
 ## Silencing
 Use http://100.69.184.113:9093 → New Silence, for example during planned maintenance.

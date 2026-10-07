@@ -1,0 +1,20 @@
+# Rusty, the medic (docker#143): tries one allowlisted fix on `remedy:`-labelled alerts before
+# Mongo pages anyone. A user unit (linger is on). Listens on docker0 only, where Alertmanager
+# reaches it as dockerhost:9097 (host-gateway); Prometheus scrapes it there too (MedicDown).
+# Install (Brandon):
+#   ln -s ~/projects/docker/systemd/medic.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now medic.service
+# The dnat playbook also needs the sudoers line in scripts/medic/medic-dnat's header.
+[Unit]
+Description=Rusty the medic: self-heal before paging (docker#143)
+After=default.target
+
+[Service]
+Environment=MEDIC_LISTEN=172.16.0.1:9097
+ExecStart=/usr/bin/python3 /home/brandon/projects/docker/scripts/medic/medic.py
+# docker0 may not exist yet right after boot: keep retrying the bind.
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target

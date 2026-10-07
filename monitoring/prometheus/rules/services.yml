@@ -11,6 +11,9 @@ groups:
         for: 5m
         labels:
           severity: critical
+          # The medic recreates these first (docker#143); each needs an entry in
+          # scripts/medic/targets.yaml. Empty = no label = Mongo pages straight away.
+          remedy: '{{ if match "^(jellyfin|audiobookshelf|romm|jackett|deemix|stash|calibre)$" $labels.key }}recreate{{ end }}'
         annotations:
           summary: "{{ $labels.name }} is down: {{ $labels.url }} does not answer (owner: {{ $labels.owner }})"
 
@@ -32,3 +35,14 @@ groups:
           owner: daisy
         annotations:
           summary: "Prometheus cannot scrape the Dashboard (:8001/metrics); service-down alerts are blind"
+
+      # Without the medic, every alert with a `remedy` label goes nowhere (docker#143).
+      # No remedy label on this one, so it reaches Mongo directly.
+      - alert: MedicDown
+        expr: up{job="medic"} == 0 or absent(up{job="medic"})
+        for: 5m
+        labels:
+          severity: critical
+          owner: dakota
+        annotations:
+          summary: "The medic (systemd/medic.service, :9097) is not answering; remedy alerts reach nobody until it's back"

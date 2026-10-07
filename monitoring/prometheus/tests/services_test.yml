@@ -24,6 +24,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+              remedy: recreate
               job: dashboard-cards
               key: romm
               name: Romm
@@ -74,3 +75,40 @@ tests:
               severity: warning
             exp_annotations:
               summary: "The Dashboard has not probed the service cards for 20m 0s"
+
+  # docker#143: only cards with a medic target get `remedy`; the rest page Mongo directly.
+  - name: a card without a medic target fires ServiceDown with no remedy label
+    interval: 30s
+    input_series:
+      - series: 'dashboard_card_up{job="dashboard-cards",key="artforge",name="ArtForge",owner="aria",url="http://100.69.184.113:8003"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: dashboard-cards
+              key: artforge
+              name: ArtForge
+              owner: aria
+              url: http://100.69.184.113:8003
+            exp_annotations:
+              summary: "ArtForge is down: http://100.69.184.113:8003 does not answer (owner: aria)"
+
+  - name: the medic not answering fires MedicDown, with no remedy label
+    interval: 30s
+    input_series:
+      - series: 'up{job="medic",instance="dockerhost"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: MedicDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              owner: dakota
+              job: medic
+              instance: dockerhost
+            exp_annotations:
+              summary: "The medic (systemd/medic.service, :9097) is not answering; remedy alerts reach nobody until it's back"

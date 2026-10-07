@@ -34,6 +34,8 @@ services:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
       - --web.external-url=http://100.69.184.113:9093
+    extra_hosts:
+      - "dockerhost:host-gateway"   # the medic's webhook (docker#143)
     ports:
       - '9093:9093'
     volumes:

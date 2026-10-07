@@ -5,6 +5,11 @@ route:
   group_interval: 5m
   repeat_interval: 6h
   routes:
+    # The medic first (docker#143): an alert with a `remedy` label gets one allowlisted fix
+    # before anyone is paged. If it gives up, it forwards the alert to Mongo itself.
+    - matchers: ['remedy=~".+"']
+      receiver: medic
+      repeat_interval: 1h
     - matchers: [severity="critical"]
       receiver: mongo
       repeat_interval: 1h
@@ -26,4 +31,10 @@ receivers:
   - name: mongo
     webhook_configs:
       - url: http://agentbus_mongo:9095/alert
+        send_resolved: true
+
+  # Rusty the medic (docker#143): systemd/medic.service on the host, bound to docker0 only.
+  - name: medic
+    webhook_configs:
+      - url: http://dockerhost:9097/alert
         send_resolved: true

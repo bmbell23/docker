@@ -1,0 +1,25 @@
+# The medic's allowlist (docker#143, agent-bus docs/SELF-HEAL.md Tier 0).
+# An alert carrying `remedy: <playbook>` is looked up here by its `remedy_key` label,
+# or its `key` label (the Dashboard card key) when it has none. No entry = the medic
+# touches nothing and forwards the alert to Mongo at once.
+# Read on every alert: no restart needed after editing.
+#
+# recreate:  <key>: {repo: <name in dagu/deploy-repos.yaml>, dir: <compose dir in it>, service: <svc>}
+# user-unit: <key>: {unit: <systemd --user unit>}
+# dnat:      <key>: {port: <host port>}   (via the sudo wrapper scripts/medic/medic-dnat)
+#
+# Never here (medic.py refuses them anyway): Mattermost, Postgres, databases, and the
+# monitoring stack the medic itself depends on.
+
+recreate:
+  jellyfin:       {repo: docker, dir: jellyfin,       service: jellyfin}
+  audiobookshelf: {repo: docker, dir: audiobookshelf, service: audiobookshelf}
+  romm:           {repo: docker, dir: romm,           service: romm}      # the app only; never romm-db
+  jackett:        {repo: docker, dir: jackett,        service: jackett}   # rejoins mullvad-vpn's network (4 Oct 2026)
+  deemix:         {repo: docker, dir: deemix,         service: deemix}
+  stash:          {repo: docker, dir: stash,          service: stash}
+  calibre:        {repo: docker, dir: calibre,        service: calibre}
+
+user-unit: {}
+
+dnat: {}
