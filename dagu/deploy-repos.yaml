@@ -36,7 +36,7 @@ repos:
   - {name: MuseForge,  path: /home/brandon/projects/MuseForge,  enabled: true}
   - {name: NerdNews,   path: /home/brandon/projects/NerdNews,   enabled: true}
   - {name: Notes,      path: /home/brandon/projects/Notes,      enabled: true}
-  - {name: PokeVault,  path: /home/brandon/projects/PokeVault,  enabled: true}
+  - {name: PokeVault,  path: /home/brandon/projects/PokeVault,  enabled: true, deploy: false}   # runs on k3s now (docker#152); a deploy would restart the stopped containers
   - {name: Proxmox,    path: /home/brandon/projects/Proxmox,    enabled: true}
   - {name: WebForge,   path: /home/brandon/projects/WebForge,   enabled: true, apk: scripts/build-apk.sh}
   - {name: WordForge,  path: /home/brandon/projects/WordForge,  enabled: true}
