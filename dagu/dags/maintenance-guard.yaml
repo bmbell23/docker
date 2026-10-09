@@ -1,0 +1,20 @@
+# Nag when a pve01 maintenance window is left open (docker#149). `start` suspends every
+# pve01-* DAG; the Alertmanager silences expire on their own, the suspend flags don't,
+# so a forgotten `end` parks the nightly backups until BackupStale fires ~30 h later.
+# Deliberately NOT named pve01-*: start would suspend its own watchdog.
+#
+# check reads only logs/maintenance/pve01.state and dagu/data/suspend/ (no .drain.env).
+# Overrun: Mongo posts in #infra (at most every 6 h) and this run goes red. Otherwise
+# silent and green. It never runs `end` itself: closing the window is Brandon's call.
+name: maintenance-guard
+description: Page when pve01 maintenance overruns its planned window
+schedule: "17 * * * *"
+max_active_runs: 1
+steps:
+  - name: check pve01 window
+    command: ssh dockerhost '~/projects/docker/scripts/maintenance/pve01-maintenance.sh check'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID} idle"
