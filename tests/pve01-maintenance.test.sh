@@ -44,6 +44,7 @@ check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 
 out=$("$HERE/scripts/maintenance/pve01-maintenance.sh" start --hours 1); rc=$?
 check "start exits 0" '[ $rc = 0 ]' || echo "$out"
+check "start records hours and until (docker#149)" 'grep -q "^hours=1$" "$T/root/logs/maintenance/pve01.state" && grep -q "^until=" "$T/root/logs/maintenance/pve01.state"' 
 
 # Does some silence match this alert's labels? (regex matchers are anchored, like Alertmanager.)
 silenced() {   # silenced '<labels json>'
@@ -69,6 +70,38 @@ out=$("$HERE/scripts/maintenance/pve01-maintenance.sh" end); rc=$?
 check "end exits 0" '[ $rc = 0 ]' || echo "$out"
 check "end lifts all $made silences" '[ "$(sort -u "$FAKE_AM/deleted" | wc -l)" = "$made" ]'
 check "end clears the state file" '[ ! -f "$T/root/logs/maintenance/pve01.state" ]'
+
+# docker#149: check nags (once per MAINT_NAG_HOURS) when the window overran, else stays quiet.
+S="$T/root/logs/maintenance/pve01.state"; M="$HERE/scripts/maintenance/pve01-maintenance.sh"
+rm -f "$T/root/dagu/.drain.env"   # check must not need the Dagu credentials
+export MAINT_SAY="$T/bin/say"
+printf '#!/bin/sh\ncat >>"%s/posts"\n' "$T" >"$T/bin/say"; chmod +x "$T/bin/say"
+mkdir -p "$T/root/dagu/data/suspend"
+touch "$T/root/dagu/data/suspend/pve01-documents-restic.suspend" "$T/root/dagu/data/suspend/pve01-pictures-copy.suspend"
+posts() { cat "$T/posts" 2>/dev/null | grep -c RAWR; }
+
+"$M" check >/dev/null; rc=$?
+check "check: no window -> exit 0, no post" '[ $rc = 0 ] && [ "$(posts)" = 0 ]'
+printf 'started=%s\nhours=4\nuntil=%s\n' "$(date -Iseconds -d '-1 hour')" "$(date -Iseconds -d '+3 hours')" >"$S"
+"$M" check >/dev/null; rc=$?
+check "check: inside the window -> exit 0, no post" '[ $rc = 0 ] && [ "$(posts)" = 0 ]'
+printf 'started=%s\nhours=4\nuntil=%s\n' "$(date -Iseconds -d '-5 hours')" "$(date -Iseconds -d '-1 hour')" >"$S"
+"$M" check >/dev/null; rc=$?
+check "check: overran -> exit 1, one post" '[ $rc = 1 ] && [ "$(posts)" = 1 ]'
+check "check: post names the suspended DAGs" 'grep -q "pve01-documents-restic, pve01-pictures-copy" "$T/posts"'
+check "check: post says how to close it" 'grep -q "pve01-maintenance.sh end" "$T/posts"'
+"$M" check >/dev/null; rc=$?
+check "check: an hour later -> still red, no second post" '[ $rc = 1 ] && [ "$(posts)" = 1 ]'
+sed -i "s/^nagged=.*/nagged=$(( $(date +%s) - 7 * 3600 ))/" "$S"
+"$M" check >/dev/null
+check "check: 7 h after the last nag -> posts again" '[ "$(posts)" = 2 ]'
+printf 'started=%s\nmem_before=1\n' "$(date -Iseconds -d '-13 hours')" >"$S"
+"$M" check >/dev/null; rc=$?
+check "check: pre-#149 state file falls back to 12 h" '[ $rc = 1 ] && [ "$(posts)" = 3 ]'
+printf 'started=%s\nmem_before=1\n' "$(date -Iseconds -d '-2 hours')" >"$S"
+"$M" check >/dev/null; rc=$?
+check "check: pre-#149 state file, 2 h in -> quiet" '[ $rc = 0 ] && [ "$(posts)" = 3 ]'
+check "guard DAG isn't caught by start's pve01-* glob" '[ ! -e "$HERE/dagu/dags/pve01-maintenance-guard.yaml" ] && [ -f "$HERE/dagu/dags/maintenance-guard.yaml" ]'
 
 [ $fail = 0 ] && echo "PASS" || echo "FAILED"
 exit $fail
