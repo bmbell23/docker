@@ -74,8 +74,10 @@ verification on purpose, since it's an up/down check (Rancher's cert is self-sig
 Alerts with a `remedy` label go to the medic (`scripts/medic/medic.py`, `systemd/medic.service`,
 docker#143) instead of Mongo. He runs one allowlisted fix from `scripts/medic/targets.yaml`
 (2 tries, 5 min apart, at most 3 attempts per target per 24 h), narrates in #infra as @rusty, and
-if it's still down forwards the alert to Mongo with a `🩺 Medic tried: …` line. Today only
-`ServiceDown` carries `remedy: recreate`, for the cards listed in `rules/services.yml`. If the
+if it's still down forwards the alert to Mongo with a `🩺 Medic tried: …` line. Today
+`ServiceDown` carries it for the cards listed in `rules/services.yml`: `recreate`, `user-unit`
+and `dnat`, chained with `+` (`recreate+dnat`, docker#161). `dnat` needs `medic-dnat` installed
+as root (see its header). If the
 medic isn't answering, `MedicDown` pages directly. Tests: `python3 tests/medic_test.py`.
 `BackupStale` for a repo with a `dagu-run` target starts its backup DAG once (docker#159): no
 retry, and nothing at all if the DAG is suspended or already running; then Mongo pages as before.

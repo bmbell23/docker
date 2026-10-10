@@ -10,7 +10,8 @@ Mongo's /alert with a `medic` annotation saying what was tried, and Mongo pages 
 Playbooks, and nothing else: recreate (PID-kill + `docker compose up -d <svc>`), user-unit
 (`systemctl --user restart`), dnat (the root-owned medic-dnat wrapper via sudo), dagu-run (start a
 Dagu DAG once, docker#159: 1 try, and none at all if it's suspended or already running). No
-down/rm/prune.
+down/rm/prune. A `remedy` may chain them with `+` (docker#161): `recreate+dnat` runs both, in order,
+on every try; empty parts are ignored, so a rule can build `recreate+dnat` or `+dnat` from two `if`s.
 
 Stdlib + PyYAML only. Run by systemd/medic.service; every knob is an env var (see CONFIG below).
 """
@@ -57,7 +58,7 @@ WINDOW = 24 * 3600
 
 # Never touched, whatever targets.yaml says: the office, databases, and the stack that alerts us.
 DENY = re.compile(r"mattermost|postgres|mariadb|mysql|redis|(^|[-_])db$|prometheus|alertmanager|grafana"
-                  r"|cadvisor|node[-_]?exporter|blackbox|monitoring|agentbus|medic", re.I)
+                  r"|cadvisor|node[-_]?exporter|blackbox|monitoring|agent[-_]?bus|medic", re.I)   # agent-bus-router: kills turns
 
 lock = threading.Lock()
 jobs = {}   # fingerprint -> threading.Event, set when the alert resolves
@@ -396,6 +397,30 @@ BLOCKED = {"dagu-run": dagu_blocked}      # checked before anything runs; non-em
 DOWN = {"dagu-run": "is stale"}            # "<who> is down" doesn't fit a backup
 
 
+def resolve_all(remedy, key):
+    """[(playbook, target), ...] for a `+`-chained remedy, or (None, why not). All or nothing."""
+    steps = [p for p in remedy.split("+") if p]
+    if not steps or len(steps) != len(set(steps)) or len(steps) > len(PLAYBOOKS):
+        return None, f"`{remedy}` isn't a remedy I know"
+    out = []
+    for p in steps:
+        t, why = resolve(p, key)
+        if not t:
+            return None, why
+        out.append((p, t))
+    return out, ""
+
+
+def run_all(steps):
+    """Every step runs, even after one fails (a dead DNAT rule is worth clearing anyway)."""
+    ok, details = True, []
+    for p, t in steps:
+        good, detail = PLAYBOOKS[p](t)
+        ok = ok and good
+        details.append(f"{p}: {detail}" if len(steps) > 1 else detail)
+    return ok, "; ".join(details)
+
+
 # ---- one alert, start to finish ----
 
 def name_of(alert):
@@ -406,24 +431,24 @@ def name_of(alert):
 def treat(payload, alert, resolved):
     fp = alert["fingerprint"]
     lb = alert.get("labels", {})
-    playbook = lb.get("remedy", "")
+    playbook = lb.get("remedy", "").strip("+")
     key = lb.get("remedy_key") or lb.get("key") or ""
     who = name_of(alert)
     if playbook == "dagu-run" and not lb.get("name"):
         who = f"The {key} backup"
     try:
-        t, why = resolve(playbook, key)
+        t, why = resolve_all(playbook, key)
         if not t:
             forward_and_stop(payload, alert, f"{why}; I didn't touch anything")
             return
-        blocked = BLOCKED.get(playbook, lambda t: "")(t)
+        blocked = next((b for b in (BLOCKED.get(p, lambda st: "")(st) for p, st in t) if b), "")
         if blocked:
             say(f"🦖 {who} ({lb.get('alertname')}): {blocked}. Paging the owner through Mongo.")
             forward_and_stop(payload, alert, f"{blocked}; I didn't touch anything")
             return
         bkey = f"{playbook}:{key}"
-        tries, ntries = 0, TRIES_FOR.get(playbook, TRIES)
-        down = DOWN.get(playbook, "is down")
+        tries, ntries = 0, min(TRIES_FOR.get(p, TRIES) for p, _ in t)   # a chain gets its strictest step's
+        down = DOWN.get(t[0][0], "is down")
         for n in range(1, ntries + 1):
             if not take_attempt(bkey):
                 say(f"🦖 {who} ({lb.get('alertname')}) {down} again, but I've tried `{playbook} {key}` "
@@ -432,8 +457,8 @@ def treat(payload, alert, resolved):
                 return
             tries = n
             say(f"🦖 {who} {down} ({lb.get('alertname')}). Trying `{playbook} {key}`, try {n}/{ntries}.")
-            ok, detail = PLAYBOOKS[playbook](t)
-            wait = WAIT_FOR.get(playbook, lambda ok: RETRY_WAIT)(ok)
+            ok, detail = run_all(t)
+            wait = max(WAIT_FOR.get(p, lambda ok: RETRY_WAIT)(ok) for p, _ in t)
             say(f"`{playbook} {key}` {'done' if ok else 'failed'}: {detail}. "
                 + (f"Checking again in {int(wait // 60)} min." if wait >= 60 else "Checking once more."))
             if resolved.wait(wait) or not still_firing(fp):

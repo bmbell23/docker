@@ -133,3 +133,28 @@ tests:
               instance: dockerhost
             exp_annotations:
               summary: "The medic (systemd/medic.service, :9097) is not answering; remedy alerts reach nobody until it's back"
+
+  # docker#161: the remedy label chains playbooks with `+`; the medic drops the empty parts.
+  - name: chained remedies per card
+    interval: 30s
+    input_series:
+      - series: 'dashboard_card_up{job="dashboard-cards",key="jellyfin",name="Jellyfin",owner="dakota",url="u"}'
+        values: '0x20'
+      - series: 'dashboard_card_up{job="dashboard-cards",key="immich",name="Immich",owner="dakota",url="u"}'
+        values: '0x20'
+      - series: 'dashboard_card_up{job="dashboard-cards",key="greatreads-prod",name="GreatReads",owner="ginger",url="u"}'
+        values: '0x20'
+      - series: 'dashboard_card_up{job="dashboard-cards",key="romm",name="Romm",owner="dakota",url="u"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels: {severity: critical, remedy: recreate+dnat, job: dashboard-cards, key: jellyfin, name: Jellyfin, owner: dakota, url: u}
+            exp_annotations: {summary: "Jellyfin is down: u does not answer (owner: dakota)"}
+          - exp_labels: {severity: critical, remedy: +dnat, job: dashboard-cards, key: immich, name: Immich, owner: dakota, url: u}
+            exp_annotations: {summary: "Immich is down: u does not answer (owner: dakota)"}
+          - exp_labels: {severity: critical, remedy: user-unit, job: dashboard-cards, key: greatreads-prod, name: GreatReads, owner: ginger, url: u}
+            exp_annotations: {summary: "GreatReads is down: u does not answer (owner: ginger)"}
+          - exp_labels: {severity: critical, remedy: recreate, job: dashboard-cards, key: romm, name: Romm, owner: dakota, url: u}
+            exp_annotations: {summary: "Romm is down: u does not answer (owner: dakota)"}

@@ -11,9 +11,13 @@ groups:
         for: 5m
         labels:
           severity: critical
-          # The medic recreates these first (docker#143); each needs an entry in
-          # scripts/medic/targets.yaml. Empty = no label = Mongo pages straight away.
-          remedy: '{{ if match "^(jellyfin|audiobookshelf|romm|jackett|deemix|stash|calibre|artforge|wordforge|lifeforge|booknews|funforge|mealforge|museforge-studio|webforge|libby-web|trilium)$" $labels.key }}recreate{{ end }}'
+          # The medic tries these first (docker#143, #160, #161); each playbook needs an entry for the
+          # key in scripts/medic/targets.yaml. Parts join with `+` (the medic drops empty ones).
+          # Empty = no label = Mongo pages straight away.
+          remedy: >-
+            {{ if match "^(jellyfin|audiobookshelf|romm|jackett|deemix|stash|calibre|artforge|wordforge|lifeforge|booknews|funforge|mealforge|museforge-studio|webforge|libby-web|trilium)$" $labels.key }}recreate{{ end }}{{
+            if match "^(greatreads-prod)$" $labels.key }}user-unit{{ end }}{{
+            if match "^(jellyfin|jackett|immich)$" $labels.key }}+dnat{{ end }}
         annotations:
           summary: "{{ $labels.name }} is down: {{ $labels.url }} does not answer (owner: {{ $labels.owner }})"
 
