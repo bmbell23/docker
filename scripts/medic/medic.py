@@ -8,7 +8,9 @@ Recovered: nobody is paged. Gave up, no target, or breaker open: the original pa
 Mongo's /alert with a `medic` annotation saying what was tried, and Mongo pages the owner as before.
 
 Playbooks, and nothing else: recreate (PID-kill + `docker compose up -d <svc>`), user-unit
-(`systemctl --user restart`), dnat (the root-owned medic-dnat wrapper via sudo). No down/rm/prune.
+(`systemctl --user restart`), dnat (the root-owned medic-dnat wrapper via sudo), dagu-run (start a
+Dagu DAG once, docker#159: 1 try, and none at all if it's suspended or already running). No
+down/rm/prune.
 
 Stdlib + PyYAML only. Run by systemd/medic.service; every knob is an env var (see CONFIG below).
 """
@@ -41,6 +43,10 @@ DOCKER = os.environ.get("MEDIC_DOCKER", "docker")
 SYSTEMCTL = os.environ.get("MEDIC_SYSTEMCTL", "systemctl")
 DNAT = os.environ.get("MEDIC_DNAT", "sudo -n /usr/local/sbin/medic-dnat").split()
 TRIES = 2
+DAGU_URL = os.environ.get("MEDIC_DAGU_URL", "http://localhost:8014/api/v1")
+DAGU_HOME = os.environ.get("MEDIC_DAGU_HOME", os.path.join(DOCKER_REPO, "dagu"))   # dags/, data/, .drain.env
+DAGU_MAX_RUN = float(os.environ.get("MEDIC_DAGU_MAX_RUN", str(4 * 3600)))   # stop waiting on a run after this
+DAGU_GRACE = float(os.environ.get("MEDIC_DAGU_GRACE", "900"))   # run done -> metric scraped -> alert resolved
 RETRY_WAIT = float(os.environ.get("MEDIC_RETRY_WAIT", "300"))
 SETTLE = float(os.environ.get("MEDIC_SETTLE", "5"))   # after `up -d`, before checking it's running
 BREAKER = 3
@@ -224,7 +230,7 @@ def load_yaml(path):
 
 def resolve(playbook, key):
     """The allowlisted target for this playbook and key, or (None, why not)."""
-    if playbook not in ("recreate", "user-unit", "dnat"):
+    if playbook not in PLAYBOOKS:
         return None, f"`{playbook}` isn't one of my playbooks"
     t = (load_yaml(TARGETS).get(playbook) or {}).get(key)
     if not t:
@@ -243,6 +249,13 @@ def resolve(playbook, key):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", svc) or DENY.search(svc) or DENY.search(d):
             return None, f"`{svc}` in {d} is on my never-touch list"
         return {"dir": d, "service": svc}, ""
+    if playbook == "dagu-run":
+        dag = str(t.get("dag", ""))
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", dag) or DENY.search(dag):
+            return None, f"DAG `{dag}` isn't allowed"
+        if not os.path.exists(os.path.join(DAGU_HOME, "dags", dag + ".yaml")):
+            return None, f"no DAG `{dag}` in dagu/dags"
+        return {"dag": dag}, ""
     if playbook == "user-unit":
         unit = str(t.get("unit", ""))
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9@_.:-]*\.(service|timer)", unit) or DENY.search(unit):
@@ -294,7 +307,64 @@ def dnat(t):
     return rc == 0, out[-300:] or "no stale rules"
 
 
-PLAYBOOKS = {"recreate": recreate, "user-unit": user_unit, "dnat": dnat}
+def dagu_running(dag):
+    """A .proc file per live run, as dagu-drain.sh and pve01-maintenance.sh read it."""
+    return any(f.endswith(".proc") for _, _, fs in os.walk(os.path.join(DAGU_HOME, "data", "proc", dag)) for f in fs)
+
+
+def dagu_blocked(t):
+    """Why dagu-run must not start this DAG now, or "". Read from Dagu's data dir: no API needed."""
+    dag = t["dag"]
+    if os.path.exists(os.path.join(DAGU_HOME, "data", "suspend", dag + ".suspend")):
+        return f"`{dag}` is suspended (a maintenance window still open?), so I didn't start it"
+    if dagu_running(dag):
+        return f"`{dag}` is already running, so I didn't start another"
+    return ""
+
+
+def dagu_auth():
+    """dagu/.drain.env's API credentials (gitignored, chmod 600; the same ones dagu-drain.sh uses)."""
+    env = {}
+    with open(os.path.join(DAGU_HOME, ".drain.env")) as f:
+        for line in f:
+            k, _, v = line.strip().partition("=")
+            env[k.removeprefix("export ").strip()] = v.strip().strip("'\"")
+    if env.get("DAGU_API_TOKEN"):
+        return {"Authorization": "Bearer " + env["DAGU_API_TOKEN"]}
+    if env.get("DAGU_USER"):
+        import base64
+        cred = base64.b64encode(f"{env['DAGU_USER']}:{env.get('DAGU_PASS', '')}".encode()).decode()
+        return {"Authorization": "Basic " + cred}
+    raise ValueError(".drain.env sets neither DAGU_API_TOKEN nor DAGU_USER")
+
+
+def dagu_run(t):
+    """Start the DAG once, then wait for that run to finish (or DAGU_MAX_RUN)."""
+    dag = t["dag"]
+    try:
+        req = urllib.request.Request(f"{DAGU_URL}/dags/{dag}/start", b"{}",
+                                     {"Content-Type": "application/json", **dagu_auth()}, method="POST")
+        urllib.request.urlopen(req, timeout=15).read()
+    except (OSError, ValueError) as e:
+        return False, f"Dagu wouldn't start `{dag}`: {e}"
+    start = time.time()
+    seen = False
+    while time.time() - start < DAGU_MAX_RUN:
+        running = dagu_running(dag)
+        seen = seen or running
+        if not running and (seen or time.time() - start > 60):
+            break
+        time.sleep(min(SETTLE, 5) or 0.05)
+    else:
+        return False, f"`{dag}` is still running after {int(DAGU_MAX_RUN // 60)} min"
+    return True, f"`{dag}` ran ({int((time.time() - start) // 60)} min)" if seen else f"started `{dag}`"
+
+
+PLAYBOOKS = {"recreate": recreate, "user-unit": user_unit, "dnat": dnat, "dagu-run": dagu_run}
+TRIES_FOR = {"dagu-run": 1}               # one backup run, then a human
+WAIT_FOR = {"dagu-run": lambda: DAGU_GRACE}
+BLOCKED = {"dagu-run": dagu_blocked}      # checked before anything runs; non-empty = page at once
+DOWN = {"dagu-run": "is stale"}            # "<who> is down" doesn't fit a backup
 
 
 # ---- one alert, start to finish ----
@@ -310,29 +380,38 @@ def treat(payload, alert, resolved):
     playbook = lb.get("remedy", "")
     key = lb.get("remedy_key") or lb.get("key") or ""
     who = name_of(alert)
+    if playbook == "dagu-run" and not lb.get("name"):
+        who = f"The {key} backup"
     try:
         t, why = resolve(playbook, key)
         if not t:
             forward_and_stop(payload, alert, f"{why}; I didn't touch anything")
             return
+        blocked = BLOCKED.get(playbook, lambda t: "")(t)
+        if blocked:
+            say(f"🦖 {who} ({lb.get('alertname')}): {blocked}. Paging the owner through Mongo.")
+            forward_and_stop(payload, alert, f"{blocked}; I didn't touch anything")
+            return
         bkey = f"{playbook}:{key}"
-        tries = 0
-        for n in range(1, TRIES + 1):
+        tries, ntries = 0, TRIES_FOR.get(playbook, TRIES)
+        wait = WAIT_FOR.get(playbook, lambda: RETRY_WAIT)()
+        down = DOWN.get(playbook, "is down")
+        for n in range(1, ntries + 1):
             if not take_attempt(bkey):
-                say(f"🦖 {who} ({lb.get('alertname')}) is down again, but I've tried `{playbook} {key}` "
+                say(f"🦖 {who} ({lb.get('alertname')}) {down} again, but I've tried `{playbook} {key}` "
                     f"{BREAKER} times in 24 h. Breaker's open; paging the owner through Mongo.")
                 forward_and_stop(payload, alert, f"breaker open: {playbook} {key} ×{BREAKER} in 24 h, not tried again")
                 return
             tries = n
-            say(f"🦖 {who} is down ({lb.get('alertname')}). Trying `{playbook} {key}`, try {n}/{TRIES}.")
+            say(f"🦖 {who} {down} ({lb.get('alertname')}). Trying `{playbook} {key}`, try {n}/{ntries}.")
             ok, detail = PLAYBOOKS[playbook](t)
             say(f"`{playbook} {key}` {'done' if ok else 'failed'}: {detail}. "
-                f"Checking again in {int(RETRY_WAIT // 60)} min.")
-            if resolved.wait(RETRY_WAIT) or not still_firing(fp):
-                say(f"🦖 {who} is back after `{playbook} {key}` (try {n}/{TRIES}). Nobody paged.")
+                f"Checking again in {int(wait // 60)} min.")
+            if resolved.wait(wait) or not still_firing(fp):
+                say(f"🦖 {who} is back after `{playbook} {key}` (try {n}/{ntries}). Nobody paged.")
                 return
-        say(f"🦖 {who} is still down after `{playbook} {key}` ×{tries}. Paging the owner through Mongo.")
-        forward_and_stop(payload, alert, f"{playbook} {key} ×{tries}, still down")
+        say(f"🦖 {who} {down.replace('is ', 'is still ')} after `{playbook} {key}` ×{tries}. Paging the owner through Mongo.")
+        forward_and_stop(payload, alert, f"{playbook} {key} ×{tries}, {down.replace('is ', 'still ')}")
     except Exception as e:   # never swallow a page because of a bug in here
         log(f"treat {fp}: {e!r}")
         forward_and_stop(payload, alert, f"the medic crashed on it ({type(e).__name__}); didn't finish")

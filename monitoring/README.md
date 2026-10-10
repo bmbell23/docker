@@ -77,6 +77,9 @@ docker#143) instead of Mongo. He runs one allowlisted fix from `scripts/medic/ta
 if it's still down forwards the alert to Mongo with a `🩺 Medic tried: …` line. Today only
 `ServiceDown` carries `remedy: recreate`, for the cards listed in `rules/services.yml`. If the
 medic isn't answering, `MedicDown` pages directly. Tests: `python3 tests/medic_test.py`.
+`BackupStale` for a repo with a `dagu-run` target starts its backup DAG once (docker#159): no
+retry, and nothing at all if the DAG is suspended or already running; then Mongo pages as before.
+Starting a DAG uses `dagu/.drain.env`'s API credentials.
 
 ## Silencing
 Use http://100.69.184.113:9093 → New Silence, for example during planned maintenance.

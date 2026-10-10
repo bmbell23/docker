@@ -1,0 +1,38 @@
+# promtool unit tests for BackupStale in monitoring/rules/host.yml. See README.md for the command.
+rule_files:
+  - ../rules/host.yml
+
+evaluation_interval: 5m
+
+tests:
+  # docker#159: a repo with a medic target gets `remedy: dagu-run`; the rest page Mongo directly.
+  - name: a stale documents backup fires BackupStale with the dagu-run remedy
+    interval: 5m
+    input_series:
+      - series: 'restic_backup_last_success_timestamp_seconds{instance="pve01",job="node",repo="documents"}'
+        values: '0x400'
+      - series: 'restic_backup_last_success_timestamp_seconds{instance="pve01",job="node",repo="pictures"}'
+        values: '0x400'
+    alert_rule_test:
+      - eval_time: 31h
+        alertname: BackupStale
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              owner: peter
+              remedy: dagu-run
+              remedy_key: documents
+              instance: pve01
+              job: node
+              repo: documents
+            exp_annotations:
+              summary: "pve01 restic documents: no good backup for 1d 7h 0m 0s"
+          - exp_labels:
+              severity: critical
+              owner: peter
+              remedy_key: pictures
+              instance: pve01
+              job: node
+              repo: pictures
+            exp_annotations:
+              summary: "pve01 restic pictures: no good backup for 1d 7h 0m 0s"

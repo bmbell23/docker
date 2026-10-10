@@ -120,6 +120,10 @@ groups:
         labels:
           severity: critical
           owner: peter
+          # The medic starts the backup DAG once first (docker#159); each repo needs a
+          # dagu-run entry in scripts/medic/targets.yaml. Empty = Mongo pages straight away.
+          remedy: '{{ if match "^(documents)$" $labels.repo }}dagu-run{{ end }}'
+          remedy_key: '{{ $labels.repo }}'
         annotations:
           summary: "{{ $labels.instance }} restic {{ $labels.repo }}: no good backup for {{ $value | humanizeDuration }}"
 
