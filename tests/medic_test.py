@@ -4,6 +4,7 @@ Run: python3 tests/medic_test.py   (no Docker, Mattermost or network needed)"""
 import importlib.util
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -25,6 +26,7 @@ open(os.path.join(DAGU, "dags", "pve01-documents-restic.yaml"), "w").close()
 with open(os.path.join(DAGU, ".drain.env"), "w") as f:
     f.write("DAGU_API_TOKEN='tok'\n")
 PROC = os.path.join(DAGU, "data/proc/pve01-documents-restic/run.proc")
+RUNS = os.path.join(DAGU, "data/dag-runs/pve01-documents-restic/dag-runs/2026/10/10")
 SUSPEND = os.path.join(DAGU, "data/suspend/pve01-documents-restic.suspend")
 
 FAKE_DOCKER = os.path.join(T, "docker")
@@ -54,10 +56,17 @@ with open(os.path.join(T, "targets.yaml"), "w") as f:
             "dagu-run:\n  documents: {dag: pve01-documents-restic}\n  ghost: {dag: no-such-dag}\n")
 
 
+def finish(run, line):
+    if os.path.isdir(run):          # the next test's setUp may have cleared it
+        with open(os.path.join(run, "status.jsonl"), "a") as f:
+            f.write(line)
+
+
 class Fake(BaseHTTPRequestHandler):
     firing = set()      # fingerprints Alertmanager says are active
     pages = []          # what reached Mongo
     starts = []         # (path, Authorization) of every Dagu start
+    dagu = "ok"         # what the next run does: ok (status 4), fail (2), lost (no run dir), 500
 
     def do_GET(self):
         body = json.dumps([{"fingerprint": fp} for fp in Fake.firing]).encode()
@@ -69,9 +78,14 @@ class Fake(BaseHTTPRequestHandler):
         if self.path.startswith("/api/v1/dags/"):   # Dagu: the run shows up as a .proc for 0.3 s
             self.rfile.read(int(self.headers["Content-Length"]))
             Fake.starts.append((self.path, self.headers.get("Authorization")))
-            open(PROC, "w").close()
-            threading.Timer(0.3, os.remove, [PROC]).start()
-            self.send_response(200)
+            if Fake.dagu != "lost":     # a run dir, running (1), then success (4) or error (2)
+                run = os.path.join(RUNS, f"dag-run_2026{len(Fake.starts):04d}", "a_1")
+                os.makedirs(run)
+                with open(os.path.join(run, "status.jsonl"), "w") as f:
+                    f.write('{"status": 1}\n')
+                end = '{"status": %d}\n' % (2 if Fake.dagu == "fail" else 4)
+                threading.Timer(0.3, finish, [run, end]).start()
+            self.send_response(500 if Fake.dagu == "500" else 200)
             self.end_headers()
             return
         Fake.pages.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
@@ -89,7 +103,8 @@ url = f"http://127.0.0.1:{srv.server_port}"
 os.environ.update(MEDIC_TARGETS=os.path.join(T, "targets.yaml"), MEDIC_REPOS=os.path.join(T, "repos.yaml"),
                   MEDIC_STATE=os.path.join(T, "state.json"), MEDIC_AM_URL=url, MEDIC_MONGO_URL=url + "/alert",
                   MEDIC_SAY=FAKE_SAY, MEDIC_DOCKER=FAKE_DOCKER, MEDIC_RETRY_WAIT="0.2", MEDIC_SETTLE="0",
-                  MEDIC_DAGU_URL=url + "/api/v1", MEDIC_DAGU_HOME=DAGU, MEDIC_DAGU_GRACE="0.2")
+                  MEDIC_DAGU_URL=url + "/api/v1", MEDIC_DAGU_HOME=DAGU, MEDIC_DAGU_GRACE="0.2",
+                  MEDIC_DAGU_POLL="0.05", MEDIC_DAGU_SEEN="0.5")
 spec = importlib.util.spec_from_file_location("medic", os.path.join(HERE, "scripts/medic/medic.py"))
 medic = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(medic)
@@ -137,7 +152,8 @@ class MedicTest(unittest.TestCase):
                 os.remove(os.path.join(T, n))
             except OSError:
                 pass
-        Fake.firing, Fake.pages, Fake.starts = set(), [], []
+        Fake.firing, Fake.pages, Fake.starts, Fake.dagu = set(), [], [], "ok"
+        shutil.rmtree(RUNS, ignore_errors=True)
 
     def test_recovers_on_first_try_and_pages_nobody(self):
         send(alert())
@@ -266,7 +282,7 @@ class MedicTest(unittest.TestCase):
         send(backup())
         settle()
         self.assertEqual(len(Fake.starts), 1)
-        self.assertIn("`pve01-documents-restic` ran", read("say.log"))
+        self.assertIn("`pve01-documents-restic` succeeded", read("say.log"))
         self.assertEqual(Fake.pages[0]["alerts"][0]["annotations"]["medic"], "dagu-run documents ×1, still stale")
 
     def test_suspended_or_running_dag_is_not_started(self):
@@ -279,6 +295,19 @@ class MedicTest(unittest.TestCase):
             self.assertIn(why, Fake.pages[-1]["alerts"][0]["annotations"]["medic"])
         self.assertEqual(Fake.starts, [])
         self.assertEqual(medic.load_state()["attempts"], {})   # a refusal isn't an attempt
+
+    def test_failed_lost_or_refused_run_pages_once_without_waiting(self):
+        Fake.firing = {"b1", "b2", "b3"}
+        for fp, mode, why in [("b1", "fail", "`dagu-run documents` failed: `pve01-documents-restic` ended with Dagu status 2"),
+                              ("b2", "lost", "no `pve01-documents-restic` run showed up"),
+                              ("b3", "500", "Dagu wouldn't start `pve01-documents-restic`")]:
+            Fake.dagu = mode
+            send(backup(fp))
+            settle()
+            self.assertIn(why, read("say.log"))
+            self.assertEqual(Fake.pages[-1]["alerts"][0]["annotations"]["medic"], "dagu-run documents ×1, still stale")
+        self.assertEqual(len(Fake.starts), 3)
+        self.assertEqual(len(Fake.pages), 3)
 
     def test_unknown_dag_is_forwarded(self):
         send(backup(repo="ghost"))

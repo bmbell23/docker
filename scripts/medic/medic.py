@@ -15,6 +15,7 @@ down/rm/prune.
 Stdlib + PyYAML only. Run by systemd/medic.service; every knob is an env var (see CONFIG below).
 """
 import copy
+import glob
 import json
 import queue
 import os
@@ -45,7 +46,9 @@ DNAT = os.environ.get("MEDIC_DNAT", "sudo -n /usr/local/sbin/medic-dnat").split(
 TRIES = 2
 DAGU_URL = os.environ.get("MEDIC_DAGU_URL", "http://localhost:8014/api/v1")
 DAGU_HOME = os.environ.get("MEDIC_DAGU_HOME", os.path.join(DOCKER_REPO, "dagu"))   # dags/, data/, .drain.env
-DAGU_MAX_RUN = float(os.environ.get("MEDIC_DAGU_MAX_RUN", str(4 * 3600)))   # stop waiting on a run after this
+DAGU_MAX_RUN = float(os.environ.get("MEDIC_DAGU_MAX_RUN", str(2 * 3600)))   # a documents run takes ~35 s
+DAGU_SEEN = float(os.environ.get("MEDIC_DAGU_SEEN", "300"))   # started, but no run dir by then: page
+DAGU_POLL = float(os.environ.get("MEDIC_DAGU_POLL", "5"))
 DAGU_GRACE = float(os.environ.get("MEDIC_DAGU_GRACE", "900"))   # run done -> metric scraped -> alert resolved
 RETRY_WAIT = float(os.environ.get("MEDIC_RETRY_WAIT", "300"))
 SETTLE = float(os.environ.get("MEDIC_SETTLE", "5"))   # after `up -d`, before checking it's running
@@ -338,31 +341,57 @@ def dagu_auth():
     raise ValueError(".drain.env sets neither DAGU_API_TOKEN nor DAGU_USER")
 
 
+def dagu_runs(dag):
+    """Run dirs Dagu has made for this DAG: data/dag-runs/<dag>/dag-runs/YYYY/MM/DD/dag-run_*."""
+    return set(glob.glob(os.path.join(DAGU_HOME, "data", "dag-runs", dag, "dag-runs", "*", "*", "*", "dag-run_*")))
+
+
+def dagu_status(run):
+    """The run's latest status code (Dagu: 0 not started, 1 running, 2 error, 3 cancelled, 4 success,
+    5 queued), from the newest attempt's status.jsonl; None while there's nothing to read yet."""
+    for attempt in sorted(glob.glob(os.path.join(run, "*", "status.jsonl")), reverse=True):
+        try:
+            with open(attempt) as f:
+                lines = [ln for ln in f if ln.strip()]
+            return json.loads(lines[-1]).get("status") if lines else None
+        except (OSError, ValueError):
+            return None
+    return None
+
+
 def dagu_run(t):
-    """Start the DAG once, then wait for that run to finish (or DAGU_MAX_RUN)."""
+    """Start the DAG once and follow that run (found as the new run dir) until it ends."""
     dag = t["dag"]
+    before = dagu_runs(dag)
     try:
         req = urllib.request.Request(f"{DAGU_URL}/dags/{dag}/start", b"{}",
                                      {"Content-Type": "application/json", **dagu_auth()}, method="POST")
         urllib.request.urlopen(req, timeout=15).read()
     except (OSError, ValueError) as e:
         return False, f"Dagu wouldn't start `{dag}`: {e}"
-    start = time.time()
-    seen = False
+    start, run, status = time.time(), None, None
     while time.time() - start < DAGU_MAX_RUN:
-        running = dagu_running(dag)
-        seen = seen or running
-        if not running and (seen or time.time() - start > 60):
-            break
-        time.sleep(min(SETTLE, 5) or 0.05)
+        if not run:
+            new = dagu_runs(dag) - before
+            run = max(new) if new else None
+            if not run and time.time() - start > DAGU_SEEN:
+                return False, f"Dagu took the start, but no `{dag}` run showed up in {int(DAGU_SEEN)} s"
+        if run:
+            status = dagu_status(run)
+            if status not in (None, 0, 1, 5):
+                break
+        time.sleep(DAGU_POLL)
     else:
         return False, f"`{dag}` is still running after {int(DAGU_MAX_RUN // 60)} min"
-    return True, f"`{dag}` ran ({int((time.time() - start) // 60)} min)" if seen else f"started `{dag}`"
+    took = f"{int(time.time() - start)} s"
+    if status == 4:
+        return True, f"`{dag}` succeeded ({took})"
+    return False, f"`{dag}` ended with Dagu status {status} ({took}); its log is in #dagu"
 
 
 PLAYBOOKS = {"recreate": recreate, "user-unit": user_unit, "dnat": dnat, "dagu-run": dagu_run}
 TRIES_FOR = {"dagu-run": 1}               # one backup run, then a human
-WAIT_FOR = {"dagu-run": lambda: DAGU_GRACE}
+WAIT_FOR = {"dagu-run": lambda ok: DAGU_GRACE if ok else 0}   # a failed backup run pages now
 BLOCKED = {"dagu-run": dagu_blocked}      # checked before anything runs; non-empty = page at once
 DOWN = {"dagu-run": "is stale"}            # "<who> is down" doesn't fit a backup
 
@@ -394,7 +423,6 @@ def treat(payload, alert, resolved):
             return
         bkey = f"{playbook}:{key}"
         tries, ntries = 0, TRIES_FOR.get(playbook, TRIES)
-        wait = WAIT_FOR.get(playbook, lambda: RETRY_WAIT)()
         down = DOWN.get(playbook, "is down")
         for n in range(1, ntries + 1):
             if not take_attempt(bkey):
@@ -405,8 +433,9 @@ def treat(payload, alert, resolved):
             tries = n
             say(f"🦖 {who} {down} ({lb.get('alertname')}). Trying `{playbook} {key}`, try {n}/{ntries}.")
             ok, detail = PLAYBOOKS[playbook](t)
+            wait = WAIT_FOR.get(playbook, lambda ok: RETRY_WAIT)(ok)
             say(f"`{playbook} {key}` {'done' if ok else 'failed'}: {detail}. "
-                f"Checking again in {int(wait // 60)} min.")
+                + (f"Checking again in {int(wait // 60)} min." if wait >= 60 else "Checking once more."))
             if resolved.wait(wait) or not still_firing(fp):
                 say(f"🦖 {who} is back after `{playbook} {key}` (try {n}/{ntries}). Nobody paged.")
                 return
