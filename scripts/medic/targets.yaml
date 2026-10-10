@@ -36,9 +36,17 @@ recreate:
   # Deliberately not here: greatreads-prod (a --user unit, see user-unit), office (Mattermost), immich (Postgres/Redis
   # stack), vaultwarden and pihole (want a human), chess/dictionary/pokevault (run on k3s), the monitoring stack and dagu.
 
-user-unit: {}
+# docker#161. Never agent-bus-router: a restart kills every agent turn in flight.
+user-unit:
+  greatreads-prod: {unit: greatreads-web.service}   # GreatReads :8090 runs as a --user unit, not a container
 
-dnat: {}
+# Ports where a stale DNAT rule has actually bitten us (CLAUDE.md gotcha): works on 127.0.0.1,
+# times out on the Tailscale IP. Run after recreate (`recreate+dnat`), or alone. Needs medic-dnat
+# installed as root (its header); until then this step fails and the alert pages as before.
+dnat:
+  jellyfin: {port: 8096}   # docs/docker/DOCKER_IPTABLES_FIX.md
+  immich:   {port: 2283}   # same doc; immich itself isn't recreated (Postgres/Redis stack)
+  jackett:  {port: 9117}   # VPN-TORRENT-SETUP.md: published by mullvad-vpn, which jackett shares
 
 # BackupStale (rules/host.yml), keyed by its `repo` label (docker#159). A restic run only adds data,
 # and the DAG's max_active_runs: 1 stops overlaps. Suspended = pve01 maintenance: hands off.

@@ -42,6 +42,12 @@ case "$*" in
 esac
 exit 0
 """)
+FAKE_DNAT = os.path.join(T, "dnat")          # medic-dnat and systemctl just log (docker#161)
+FAKE_SYSTEMCTL = os.path.join(T, "systemctl")
+for path, out in ((FAKE_DNAT, "no stale DNAT rules for :$1"), (FAKE_SYSTEMCTL, "active")):
+    with open(path, "w") as f:
+        f.write(f'#!/bin/sh\necho "{os.path.basename(path)} $*" >> {T}/docker.log\necho "{out}"\n')
+    os.chmod(path, 0o755)
 FAKE_SAY = os.path.join(T, "say")
 with open(FAKE_SAY, "w") as f:
     f.write(f"#!/bin/sh\ncat >> {T}/say.log; echo >> {T}/say.log\n")
@@ -54,6 +60,10 @@ with open(os.path.join(T, "targets.yaml"), "w") as f:
     f.write("recreate:\n  romm: {repo: docker, dir: romm, service: romm}\n"
             "  romm-db: {repo: docker, dir: romm, service: romm-db}\n"
             "  escape: {repo: docker, dir: ../.., service: x}\n"
+            "  jellyfin: {repo: docker, dir: jellyfin, service: jellyfin}\n"
+            "user-unit:\n  greatreads-prod: {unit: greatreads-web.service}\n"
+            "  router: {unit: agent-bus-router.service}\n"
+            "dnat:\n  jellyfin: {port: 8096}\n  immich: {port: 2283}\n"
             "dagu-run:\n  documents: {dag: pve01-documents-restic}\n  ghost: {dag: no-such-dag}\n")
 
 
@@ -105,7 +115,8 @@ os.environ.update(MEDIC_TARGETS=os.path.join(T, "targets.yaml"), MEDIC_REPOS=os.
                   MEDIC_STATE=os.path.join(T, "state.json"), MEDIC_AM_URL=url, MEDIC_MONGO_URL=url + "/alert",
                   MEDIC_SAY=FAKE_SAY, MEDIC_DOCKER=FAKE_DOCKER, MEDIC_RETRY_WAIT="0.2", MEDIC_SETTLE="0",
                   MEDIC_DAGU_URL=url + "/api/v1", MEDIC_DAGU_HOME=DAGU, MEDIC_DAGU_GRACE="0.2",
-                  MEDIC_DAGU_POLL="0.05", MEDIC_DAGU_SEEN="0.5")
+                  MEDIC_DAGU_POLL="0.05", MEDIC_DAGU_SEEN="0.5",
+                  MEDIC_DNAT=FAKE_DNAT, MEDIC_SYSTEMCTL=FAKE_SYSTEMCTL)
 spec = importlib.util.spec_from_file_location("medic", os.path.join(HERE, "scripts/medic/medic.py"))
 medic = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(medic)
@@ -229,12 +240,14 @@ class MedicTest(unittest.TestCase):
         targets = os.path.join(HERE, "scripts/medic/targets.yaml")
         repos = os.path.join(HERE, "dagu/deploy-repos.yaml")
         with open(os.path.join(HERE, "monitoring/prometheus/rules/services.yml")) as f:
-            m = re.search(r'remedy: .*match "\^\(([^)]*)\)\$"', f.read())
-        self.assertTrue(m, "remedy regex not found in services.yml")
-        keys = m.group(1).split("|")
-        recreate = medic.load_yaml(targets)["recreate"]
-        for k in keys:
-            self.assertIn(k, recreate, f"ServiceDown sets remedy for `{k}` but targets.yaml has no entry")
+            # Each `if match "^(a|b)$" $labels.key }}<playbook>` part of the (multi-line) remedy label.
+            parts = re.findall(r'match "\^\(([^)]*)\)\$" \$labels\.key \}\}\+?([a-z-]+)\{\{', f.read())
+        self.assertEqual(sorted(p for _, p in parts), ["dnat", "recreate", "user-unit"], "remedy parts not found in services.yml")
+        shipped = medic.load_yaml(targets)
+        for keys, playbook in parts:
+            for k in keys.split("|"):
+                self.assertIn(k, shipped[playbook], f"ServiceDown sets {playbook} for `{k}` but targets.yaml has no entry")
+        recreate = shipped["recreate"]
         for k, t in recreate.items():
             self.assertFalse(medic.DENY.search(str(t["service"])), f"{k}: service on the never-touch list")
             self.assertFalse(medic.DENY.search(str(t["dir"])), f"{k}: dir on the never-touch list")
@@ -343,6 +356,40 @@ class MedicTest(unittest.TestCase):
         self.assertIn("no DAG `no-such-dag`", Fake.pages[0]["alerts"][0]["annotations"]["medic"])
         self.assertIn("no dagu-run target for `pictures`", Fake.pages[1]["alerts"][0]["annotations"]["medic"])
         self.assertEqual(Fake.starts, [])
+
+    # docker#161: chained remedies, dnat and user-unit.
+    def test_recreate_then_dnat_on_every_try(self):
+        Fake.firing = {"fp1"}
+        send(alert(key="jellyfin", remedy="recreate+dnat"))
+        settle()
+        log = read("docker.log")
+        self.assertEqual(log.count("compose up -d --no-deps jellyfin"), 2)
+        self.assertEqual(log.count("dnat 8096"), 2)
+        self.assertLess(log.index("compose up -d --no-deps jellyfin"), log.index("dnat 8096"))
+        self.assertIn("recreate: container is up again; dnat: no stale DNAT rules for :8096", read("say.log"))
+        self.assertEqual(Fake.pages[0]["alerts"][0]["annotations"]["medic"], "recreate+dnat jellyfin ×2, still down")
+
+    def test_dnat_alone_touches_no_container(self):
+        send(alert(key="immich", remedy="+dnat"))      # what the rule builds for a dnat-only card
+        settle()
+        self.assertEqual(read("docker.log").strip(), "dnat 2283")
+        self.assertIn("Immich is back after `dnat immich` (try 1/2). Nobody paged.", read("say.log"))
+
+    def test_user_unit_restart(self):
+        send(alert(key="greatreads-prod", remedy="user-unit"))
+        settle()
+        self.assertIn("systemctl --user restart greatreads-web.service", read("docker.log"))
+        self.assertEqual(Fake.pages, [])
+
+    def test_chain_is_all_or_nothing_and_router_is_untouchable(self):
+        for fp, key, remedy, why in [("a", "romm", "recreate+dnat", "no dnat target for `romm`"),
+                                     ("b", "jellyfin", "dnat+dnat", "isn't a remedy I know"),
+                                     ("d", "jellyfin", "recreate+reboot", "isn't a remedy I know"),
+                                     ("c", "router", "user-unit", "unit `agent-bus-router.service` isn't allowed")]:
+            send(alert(fp, key, remedy=remedy))
+            settle()
+            self.assertIn(why, Fake.pages[-1]["alerts"][0]["annotations"]["medic"])
+        self.assertEqual(read("docker.log"), "")
 
 
 if __name__ == "__main__":
