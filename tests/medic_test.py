@@ -384,6 +384,7 @@ class MedicTest(unittest.TestCase):
     def test_chain_is_all_or_nothing_and_router_is_untouchable(self):
         for fp, key, remedy, why in [("a", "romm", "recreate+dnat", "no dnat target for `romm`"),
                                      ("b", "jellyfin", "dnat+dnat", "isn't a remedy I know"),
+                                     ("d", "jellyfin", "recreate+reboot", "isn't a remedy I know"),
                                      ("c", "router", "user-unit", "unit `agent-bus-router.service` isn't allowed")]:
             send(alert(fp, key, remedy=remedy))
             settle()

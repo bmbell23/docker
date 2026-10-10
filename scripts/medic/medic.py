@@ -391,6 +391,7 @@ def dagu_run(t):
 
 
 PLAYBOOKS = {"recreate": recreate, "user-unit": user_unit, "dnat": dnat, "dagu-run": dagu_run}
+CHAINABLE = {"recreate", "user-unit", "dnat"}   # quick fixes only; anything else (dagu-run) runs alone
 TRIES_FOR = {"dagu-run": 1}               # one backup run, then a human
 WAIT_FOR = {"dagu-run": lambda ok: DAGU_GRACE if ok else 0}   # a failed backup run pages now
 BLOCKED = {"dagu-run": dagu_blocked}      # checked before anything runs; non-empty = page at once
@@ -400,7 +401,7 @@ DOWN = {"dagu-run": "is stale"}            # "<who> is down" doesn't fit a backu
 def resolve_all(remedy, key):
     """[(playbook, target), ...] for a `+`-chained remedy, or (None, why not). All or nothing."""
     steps = [p for p in remedy.split("+") if p]
-    if not steps or len(steps) != len(set(steps)) or len(steps) > len(PLAYBOOKS):
+    if not steps or len(steps) != len(set(steps)) or (len(steps) > 1 and not set(steps) <= CHAINABLE):
         return None, f"`{remedy}` isn't a remedy I know"
     out = []
     for p in steps:
