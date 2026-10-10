@@ -20,6 +20,21 @@ recreate:
   deemix:         {repo: docker, dir: deemix,         service: deemix}
   stash:          {repo: docker, dir: stash,          service: stash}
   calibre:        {repo: docker, dir: calibre,        service: calibre}
+  trilium:        {repo: docker, dir: trilium,        service: trilium}
+
+  # The agents' own apps (docker#160). Rusty posts in #infra; if he gives up, Mongo pages the card's owner as before.
+  artforge:         {repo: ArtForge,  dir: ., service: artforge}
+  wordforge:        {repo: WordForge, dir: ., service: wordforge}
+  lifeforge:        {repo: LifeForge, dir: ., service: lifeforge}
+  booknews:         {repo: NerdNews,  dir: ., service: booknews}           # NerdNews' card key is booknews
+  funforge:         {repo: FunForge,  dir: ., service: funforge}
+  mealforge:        {repo: MealForge, dir: ., service: mealforge}
+  museforge-studio: {repo: MuseForge, dir: ., service: studio}
+  webforge:         {repo: WebForge,  dir: ., service: webforge_releases}  # the :8012 card; never webforge_sync/macmirror
+  libby-web:        {repo: Libby,     dir: ., service: libby-web}          # never libby-web-test
+
+  # Deliberately not here: greatreads-prod (a --user unit, see user-unit), office (Mattermost), immich (Postgres/Redis
+  # stack), vaultwarden and pihole (want a human), chess/dictionary/pokevault (run on k3s), the monitoring stack and dagu.
 
 user-unit: {}
 
