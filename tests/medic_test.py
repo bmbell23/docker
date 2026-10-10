@@ -4,6 +4,7 @@ Run: python3 tests/medic_test.py   (no Docker, Mattermost or network needed)"""
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -222,6 +223,32 @@ class MedicTest(unittest.TestCase):
             settle()
             self.assertIn(why, Fake.pages[-1]["alerts"][0]["annotations"]["medic"])
         self.assertEqual(read("docker.log"), "")
+
+    def test_shipped_targets_resolve(self):
+        # The real lists, not the fakes: every key the alert rule hands to the medic has a target.
+        targets = os.path.join(HERE, "scripts/medic/targets.yaml")
+        repos = os.path.join(HERE, "dagu/deploy-repos.yaml")
+        with open(os.path.join(HERE, "monitoring/prometheus/rules/services.yml")) as f:
+            m = re.search(r'remedy: .*match "\^\(([^)]*)\)\$"', f.read())
+        self.assertTrue(m, "remedy regex not found in services.yml")
+        keys = m.group(1).split("|")
+        recreate = medic.load_yaml(targets)["recreate"]
+        for k in keys:
+            self.assertIn(k, recreate, f"ServiceDown sets remedy for `{k}` but targets.yaml has no entry")
+        for k, t in recreate.items():
+            self.assertFalse(medic.DENY.search(str(t["service"])), f"{k}: service on the never-touch list")
+            self.assertFalse(medic.DENY.search(str(t["dir"])), f"{k}: dir on the never-touch list")
+        paths = {r["name"]: r["path"] for r in medic.load_yaml(repos)["repos"]}
+        real_targets, real_repos = medic.TARGETS, medic.REPOS
+        medic.TARGETS, medic.REPOS = targets, repos
+        try:
+            for k, t in recreate.items():
+                self.assertIn(t["repo"], paths, f"{k}: repo not in deploy-repos.yaml")
+                if os.path.exists(paths[t["repo"]]):      # other machines may not have every clone
+                    target, why = medic.resolve("recreate", k)
+                    self.assertTrue(target, f"{k}: {why}")
+        finally:
+            medic.TARGETS, medic.REPOS = real_targets, real_repos
 
     def test_restart_mid_fix_pages_on_startup(self):
         page = {"payload": {"version": "4", "receiver": "medic", "alerts": []}, "alert": alert()}

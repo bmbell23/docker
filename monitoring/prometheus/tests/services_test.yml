@@ -80,6 +80,26 @@ tests:
   - name: a card without a medic target fires ServiceDown with no remedy label
     interval: 30s
     input_series:
+      - series: 'dashboard_card_up{job="dashboard-cards",key="immich",name="Immich",owner="dakota",url="http://100.69.184.113:2283"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: dashboard-cards
+              key: immich
+              name: Immich
+              owner: dakota
+              url: http://100.69.184.113:2283
+            exp_annotations:
+              summary: "Immich is down: http://100.69.184.113:2283 does not answer (owner: dakota)"
+
+  # docker#160: the agents' own apps are on the list too.
+  - name: a down agent app card gets the recreate remedy
+    interval: 30s
+    input_series:
       - series: 'dashboard_card_up{job="dashboard-cards",key="artforge",name="ArtForge",owner="aria",url="http://100.69.184.113:8003"}'
         values: '0x20'
     alert_rule_test:
@@ -88,6 +108,7 @@ tests:
         exp_alerts:
           - exp_labels:
               severity: critical
+              remedy: recreate
               job: dashboard-cards
               key: artforge
               name: ArtForge
