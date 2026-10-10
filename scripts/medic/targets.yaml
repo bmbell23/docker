@@ -7,6 +7,7 @@
 # recreate:  <key>: {repo: <name in dagu/deploy-repos.yaml>, dir: <compose dir in it>, service: <svc>}
 # user-unit: <key>: {unit: <systemd --user unit>}
 # dnat:      <key>: {port: <host port>}   (via the sudo wrapper scripts/medic/medic-dnat)
+# dagu-run:  <key>: {dag: <name in dagu/dags>}   (1 try; skipped, and paged, if suspended or running)
 #
 # Never here (medic.py refuses them anyway): Mattermost, Postgres, databases, and the
 # monitoring stack the medic itself depends on.
@@ -23,3 +24,8 @@ recreate:
 user-unit: {}
 
 dnat: {}
+
+# BackupStale (rules/host.yml), keyed by its `repo` label (docker#159). A restic run only adds data,
+# and the DAG's max_active_runs: 1 stops overlaps. Suspended = pve01 maintenance: hands off.
+dagu-run:
+  documents: {dag: pve01-documents-restic}
