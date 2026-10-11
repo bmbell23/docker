@@ -111,6 +111,7 @@ deploy_dagu() {
 # Opted-in stacks: <dir>:<files its containers read at start>. Docs and helper scripts don't count.
 STACKS=(
     "youtube-downloader:docker-compose.yml Dockerfile yt-dlp.conf config.yml"
+    "ws-scrcpy:docker-compose.yml Dockerfile config.yaml"
 )
 
 deploy_stacks() {
