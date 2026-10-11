@@ -6,6 +6,8 @@ gets ads, trackers, and adult sites blocked before the connection ever happens.
 - **Web UI**: http://100.69.184.113:8053/admin (password in `.env`)
 - **DNS**: port 53 on `10.0.0.160` (LAN), `100.69.184.113` (Tailscale), `127.0.0.1` (local).
   Not bound to `0.0.0.0` — systemd-resolved holds the `127.0.0.53:53` stub.
+  The Tailscale bind needs `net.ipv4.ip_nonlocal_bind=1` (`99-nonlocal-bind.conf`, in `/etc/sysctl.d/`),
+  or a boot where Docker starts before `tailscale0` has its IP takes the whole container down (docker#166).
 - **Upstream**: Cloudflare Family `1.1.1.3` / `1.0.0.3` (filters malware + adult
   content upstream too, as a second layer behind the blocklists)
 
