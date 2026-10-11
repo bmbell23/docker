@@ -8,7 +8,8 @@ Recovered: nobody is paged. Gave up, no target, or breaker open: the original pa
 Mongo's /alert with a `medic` annotation saying what was tried, and Mongo pages the owner as before.
 
 Playbooks, and nothing else: recreate (PID-kill + `docker compose up -d <svc>`), user-unit
-(`systemctl --user restart`), dnat (the root-owned medic-dnat wrapper via sudo), dagu-run (start a
+(`systemctl --user restart`), dnat (the root-owned medic-dnat wrapper via sudo), netns (recreate
+containers left in a dead network namespace, scripts/netns-orphans.sh, docker#165), dagu-run (start a
 Dagu DAG once, docker#159: 1 try, and none at all if it's suspended or already running). No
 down/rm/prune. A `remedy` may chain them with `+` (docker#161): `recreate+dnat` runs both, in order,
 on every try; empty parts are ignored, so a rule can build `recreate+dnat` or `+dnat` from two `if`s.
@@ -43,6 +44,7 @@ MONGO_URL = os.environ.get("MEDIC_MONGO_URL", "")   # empty: agentbus_mongo's IP
 SAY = os.environ.get("MEDIC_SAY", "/home/brandon/projects/agent-bus/bin/say rusty infra -").split()
 DOCKER = os.environ.get("MEDIC_DOCKER", "docker")
 SYSTEMCTL = os.environ.get("MEDIC_SYSTEMCTL", "systemctl")
+NETNS = os.environ.get("MEDIC_NETNS", os.path.join(DOCKER_REPO, "scripts", "netns-orphans.sh")).split()
 DNAT = os.environ.get("MEDIC_DNAT", "sudo -n /usr/local/sbin/medic-dnat").split()
 TRIES = 2
 DAGU_URL = os.environ.get("MEDIC_DAGU_URL", "http://localhost:8014/api/v1")
@@ -237,7 +239,7 @@ def resolve(playbook, key):
     if playbook not in PLAYBOOKS:
         return None, f"`{playbook}` isn't one of my playbooks"
     t = (load_yaml(TARGETS).get(playbook) or {}).get(key)
-    if not t:
+    if t is None:   # `{}` is a target too (netns takes no parameters)
         return None, f"no {playbook} target for `{key}` in my list"
     if playbook == "recreate":
         repos = {r["name"]: r["path"] for r in load_yaml(REPOS).get("repos", [])}
@@ -265,6 +267,8 @@ def resolve(playbook, key):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9@_.:-]*\.(service|timer)", unit) or DENY.search(unit):
             return None, f"unit `{unit}` isn't allowed"
         return {"unit": unit}, ""
+    if playbook == "netns":
+        return {}, ""   # sweeps every orphan; the key only gates which alerts may ask for it
     port = str(t.get("port", ""))
     if not re.fullmatch(r"[0-9]{1,5}", port):
         return None, f"bad port `{port}`"
@@ -309,6 +313,11 @@ def user_unit(t):
 def dnat(t):
     rc, out = run([*DNAT, t["port"]], timeout=60)
     return rc == 0, out[-300:] or "no stale rules"
+
+
+def netns(t):
+    rc, out = run(NETNS, timeout=600)
+    return rc == 0, out[-300:] or "no orphaned containers"
 
 
 def dagu_running(dag):
@@ -390,8 +399,8 @@ def dagu_run(t):
     return False, f"`{dag}` ended with Dagu status {status} ({took}); its log is in #dagu"
 
 
-PLAYBOOKS = {"recreate": recreate, "user-unit": user_unit, "dnat": dnat, "dagu-run": dagu_run}
-CHAINABLE = {"recreate", "user-unit", "dnat"}   # quick fixes only; anything else (dagu-run) runs alone
+PLAYBOOKS = {"recreate": recreate, "user-unit": user_unit, "dnat": dnat, "netns": netns, "dagu-run": dagu_run}
+CHAINABLE = {"recreate", "user-unit", "dnat", "netns"}   # quick fixes only; anything else (dagu-run) runs alone
 TRIES_FOR = {"dagu-run": 1}               # one backup run, then a human
 WAIT_FOR = {"dagu-run": lambda ok: DAGU_GRACE if ok else 0}   # a failed backup run pages now
 BLOCKED = {"dagu-run": dagu_blocked}      # checked before anything runs; non-empty = page at once
@@ -406,7 +415,7 @@ def resolve_all(remedy, key):
     out = []
     for p in steps:
         t, why = resolve(p, key)
-        if not t:
+        if t is None:
             return None, why
         out.append((p, t))
     return out, ""

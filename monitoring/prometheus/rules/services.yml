@@ -17,6 +17,7 @@ groups:
           remedy: >-
             {{ if match "^(jellyfin|audiobookshelf|romm|jackett|deemix|stash|calibre|artforge|wordforge|lifeforge|booknews|funforge|mealforge|museforge-studio|webforge|libby-web|trilium)$" $labels.key }}recreate{{ end }}{{
             if match "^(greatreads-prod)$" $labels.key }}user-unit{{ end }}{{
+            if match "^(jackett)$" $labels.key }}+netns{{ end }}{{
             if match "^(jellyfin|jackett|immich)$" $labels.key }}+dnat{{ end }}
         annotations:
           summary: "{{ $labels.name }} is down: {{ $labels.url }} does not answer (owner: {{ $labels.owner }})"

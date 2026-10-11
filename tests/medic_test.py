@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 T = tempfile.mkdtemp()
 REPO = os.path.join(T, "repo")
-for d in ("romm", "jellyfin"):
+for d in ("romm", "jellyfin", "jackett"):
     os.makedirs(os.path.join(REPO, d))
     open(os.path.join(REPO, d, "docker-compose.yml"), "w").close()
 
@@ -44,7 +44,9 @@ exit 0
 """)
 FAKE_DNAT = os.path.join(T, "dnat")          # medic-dnat and systemctl just log (docker#161)
 FAKE_SYSTEMCTL = os.path.join(T, "systemctl")
-for path, out in ((FAKE_DNAT, "no stale DNAT rules for :$1"), (FAKE_SYSTEMCTL, "active")):
+FAKE_NETNS = os.path.join(T, "netns")        # netns-orphans.sh: logs, says what it recreated (docker#165)
+for path, out in ((FAKE_DNAT, "no stale DNAT rules for :$1"), (FAKE_SYSTEMCTL, "active"),
+                  (FAKE_NETNS, "flaresolverr: recreated (flaresolverr)")):
     with open(path, "w") as f:
         f.write(f'#!/bin/sh\necho "{os.path.basename(path)} $*" >> {T}/docker.log\necho "{out}"\n')
     os.chmod(path, 0o755)
@@ -61,9 +63,11 @@ with open(os.path.join(T, "targets.yaml"), "w") as f:
             "  romm-db: {repo: docker, dir: romm, service: romm-db}\n"
             "  escape: {repo: docker, dir: ../.., service: x}\n"
             "  jellyfin: {repo: docker, dir: jellyfin, service: jellyfin}\n"
+            "  jackett: {repo: docker, dir: jackett, service: jackett}\n"
             "user-unit:\n  greatreads-prod: {unit: greatreads-web.service}\n"
             "  router: {unit: agent-bus-router.service}\n"
-            "dnat:\n  jellyfin: {port: 8096}\n  immich: {port: 2283}\n"
+            "dnat:\n  jellyfin: {port: 8096}\n  immich: {port: 2283}\n  jackett: {port: 9117}\n"
+            "netns:\n  jackett: {}\n"
             "dagu-run:\n  documents: {dag: pve01-documents-restic}\n  ghost: {dag: no-such-dag}\n")
 
 
@@ -116,7 +120,7 @@ os.environ.update(MEDIC_TARGETS=os.path.join(T, "targets.yaml"), MEDIC_REPOS=os.
                   MEDIC_SAY=FAKE_SAY, MEDIC_DOCKER=FAKE_DOCKER, MEDIC_RETRY_WAIT="0.2", MEDIC_SETTLE="0",
                   MEDIC_DAGU_URL=url + "/api/v1", MEDIC_DAGU_HOME=DAGU, MEDIC_DAGU_GRACE="0.2",
                   MEDIC_DAGU_POLL="0.05", MEDIC_DAGU_SEEN="0.5",
-                  MEDIC_DNAT=FAKE_DNAT, MEDIC_SYSTEMCTL=FAKE_SYSTEMCTL)
+                  MEDIC_DNAT=FAKE_DNAT, MEDIC_NETNS=FAKE_NETNS, MEDIC_SYSTEMCTL=FAKE_SYSTEMCTL)
 spec = importlib.util.spec_from_file_location("medic", os.path.join(HERE, "scripts/medic/medic.py"))
 medic = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(medic)
@@ -242,7 +246,7 @@ class MedicTest(unittest.TestCase):
         with open(os.path.join(HERE, "monitoring/prometheus/rules/services.yml")) as f:
             # Each `if match "^(a|b)$" $labels.key }}<playbook>` part of the (multi-line) remedy label.
             parts = re.findall(r'match "\^\(([^)]*)\)\$" \$labels\.key \}\}\+?([a-z-]+)\{\{', f.read())
-        self.assertEqual(sorted(p for _, p in parts), ["dnat", "recreate", "user-unit"], "remedy parts not found in services.yml")
+        self.assertEqual(sorted(p for _, p in parts), ["dnat", "netns", "recreate", "user-unit"], "remedy parts not found in services.yml")
         shipped = medic.load_yaml(targets)
         for keys, playbook in parts:
             for k in keys.split("|"):
@@ -374,6 +378,41 @@ class MedicTest(unittest.TestCase):
         settle()
         self.assertEqual(read("docker.log").strip(), "dnat 2283")
         self.assertIn("Immich is back after `dnat immich` (try 1/2). Nobody paged.", read("say.log"))
+
+    # docker#165: the sweep for containers left in a dead network namespace.
+    def test_recreate_netns_dnat_runs_in_order_on_every_try(self):
+        Fake.firing = {"fp1"}
+        send(alert(key="jackett", remedy="recreate+netns+dnat"))
+        settle()
+        log = read("docker.log")
+        self.assertEqual(log.count("netns"), 2)
+        self.assertLess(log.index("compose up -d --no-deps jackett"), log.index("netns"))
+        self.assertIn("recreate: container is up again; netns: flaresolverr: recreated (flaresolverr)", read("say.log"))
+
+    def test_netns_alone_sweeps_and_reports(self):
+        send(alert(key="jackett", remedy="+netns"))
+        settle()
+        self.assertEqual(read("docker.log").strip(), "netns")
+        self.assertIn("flaresolverr: recreated (flaresolverr)", read("say.log"))
+        self.assertEqual(Fake.pages, [])
+
+    def test_netns_failure_is_a_failed_try(self):
+        with open(FAKE_NETNS, "w") as f:
+            f.write("#!/bin/sh\necho 'jackett: left untouched'; exit 1\n")
+        self.addCleanup(lambda: open(FAKE_NETNS, "w").write('#!/bin/sh\necho "netns" >> %s/docker.log\necho "flaresolverr: recreated (flaresolverr)"\n' % T))
+        Fake.firing = {"fp1"}
+        send(alert(key="jackett", remedy="netns"))
+        settle()
+        self.assertIn("`netns jackett` failed: jackett: left untouched", read("say.log"))
+        self.assertEqual(Fake.pages[0]["alerts"][0]["annotations"]["medic"], "netns jackett ×2, still down")
+
+    def test_netns_needs_a_target_and_chains_all_or_nothing(self):
+        send(alert("a", "romm", remedy="netns"))
+        send(alert("b", "jellyfin", remedy="recreate+netns"))
+        settle()
+        for page in Fake.pages:
+            self.assertIn("no netns target for", page["alerts"][0]["annotations"]["medic"])
+        self.assertEqual(read("docker.log"), "")
 
     def test_user_unit_restart(self):
         send(alert(key="greatreads-prod", remedy="user-unit"))
