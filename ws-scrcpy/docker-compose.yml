@@ -1,0 +1,21 @@
+name: ws-scrcpy
+
+services:
+  ws-scrcpy:
+    build: .
+    image: ws-scrcpy:local
+    container_name: ws-scrcpy
+    restart: unless-stopped
+    mem_limit: 512m
+    # Host network, not a port mapping: ws-scrcpy reaches the phone through `adb forward`
+    # ports, which the host's adb server opens on 127.0.0.1. It also uses that server
+    # (127.0.0.1:5037), so the phone stays paired once, on the host.
+    network_mode: host
+    environment:
+      # Whoever opens this page controls the phone: Tailscale only, never 0.0.0.0 or the LAN.
+      # If tailscale0 has no IP yet at boot the bind fails and restart: retries it
+      # (or it binds early with net.ipv4.ip_nonlocal_bind=1, pihole/99-nonlocal-bind.conf).
+      LISTEN_HOST: 100.69.184.113
+      WS_SCRCPY_CONFIG: /config.yaml
+    volumes:
+      - ./config.yaml:/config.yaml:ro

@@ -1,0 +1,5 @@
+# ws-scrcpy run config (spec: upstream src/types/Configuration.d.ts).
+# The listen address isn't here: upstream has no option for it, see LISTEN_HOST in the compose file.
+server:
+  - secure: false
+    port: 8017
