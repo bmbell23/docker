@@ -24,10 +24,10 @@ services:
       # 127.0.0.53:53 stub, which blocks a wildcard bind
       - "10.0.0.160:53:53/tcp"      # LAN
       - "10.0.0.160:53:53/udp"
-      # TEMP disabled: Tailscale logged out (NeedsLogin), IP not assigned so bind fails.
-      # Re-enable after: sudo tailscale up
-      # - "100.69.184.113:53:53/tcp"  # Tailscale
-      # - "100.69.184.113:53:53/udp"
+      # Tailscale (docker#166). Needs net.ipv4.ip_nonlocal_bind=1 (pihole/99-nonlocal-bind.conf):
+      # without it, a boot where Docker beats tailscale0 to its IP fails the whole container, LAN DNS too.
+      - "100.69.184.113:53:53/tcp"
+      - "100.69.184.113:53:53/udp"
       - "127.0.0.1:53:53/tcp"       # local testing from the server
       - "127.0.0.1:53:53/udp"
       - "${PIHOLE_WEB_PORT}:80"
