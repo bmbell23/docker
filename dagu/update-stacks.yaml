@@ -17,6 +17,8 @@ stacks:
   - {name: audiobookshelf, mode: auto}
   - {name: calibre, mode: auto}
   - {name: deemix, mode: auto}
+  # The VPN goes first: jackett shares mullvad-vpn's network and is orphaned if the VPN is recreated after it (docker#165).
+  - {name: torrents, mode: auto}
   - {name: jackett, mode: auto}
   - name: jellyfin
     mode: auto
@@ -30,7 +32,6 @@ stacks:
     mode: auto
     post: ~/projects/docker/scripts/updates/stash-migrate.sh
     why: Stash stops at NEEDS_MIGRATION after a schema bump (docker#25); the hook migrates with a backup
-  - {name: torrents, mode: auto}
   - {name: trilium, mode: auto}
   - name: vaultwarden
     mode: auto

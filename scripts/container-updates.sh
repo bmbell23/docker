@@ -206,6 +206,13 @@ while IFS=$'\t' read -r name mode pre post why <&3; do
     updated+=("$name: ${changes[*]}")
 done 3<<<"$rows"
 
+# Anything sharing a recreated container's network (jackett on mullvad-vpn, docker#165) is now orphaned
+if [ "$dry" = 0 ]; then
+    out=$("${UPDATES_NETNS:-$(dirname "$0")/netns-orphans.sh}" 2>&1); rc=$?
+    if [ $rc -ne 0 ]; then problems+=("netns: ${out//$'\n'/; }")
+    elif [ -n "$out" ]; then updated+=("netns: ${out//$'\n'/; }"); fi
+fi
+
 msg="**Weekly container updates**$([ "$dry" = 1 ] && echo ' (dry run)')"
 [ ${#problems[@]} -gt 0 ] || [ ${#reverted[@]} -gt 0 ] && msg="@brandon $msg"
 for l in "${updated[@]}";   do msg+=$'\n'"- updated $l"; done

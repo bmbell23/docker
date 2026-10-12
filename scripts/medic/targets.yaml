@@ -7,6 +7,8 @@
 # recreate:  <key>: {repo: <name in dagu/deploy-repos.yaml>, dir: <compose dir in it>, service: <svc>}
 # user-unit: <key>: {unit: <systemd --user unit>}
 # dnat:      <key>: {port: <host port>}   (via the sudo wrapper scripts/medic/medic-dnat)
+# netns:     <key>: {}   (sweeps every orphaned container: sidecars stuck in a dead network namespace,
+#                         scripts/netns-orphans.sh, docker#165)
 # dagu-run:  <key>: {dag: <name in dagu/dags>}   (1 try; skipped, and paged, if suspended or running)
 #
 # Never here (medic.py refuses them anyway): Mattermost, Postgres, databases, and the
@@ -16,7 +18,7 @@ recreate:
   jellyfin:       {repo: docker, dir: jellyfin,       service: jellyfin}
   audiobookshelf: {repo: docker, dir: audiobookshelf, service: audiobookshelf}
   romm:           {repo: docker, dir: romm,           service: romm}      # the app only; never romm-db
-  jackett:        {repo: docker, dir: jackett,        service: jackett}   # rejoins mullvad-vpn's network (4 Oct 2026)
+  jackett:        {repo: docker, dir: jackett,        service: jackett}   # rejoins mullvad-vpn's network (4 Oct 2026); `recreate+netns+dnat`: netns also fixes flaresolverr
   deemix:         {repo: docker, dir: deemix,         service: deemix}
   stash:          {repo: docker, dir: stash,          service: stash}
   calibre:        {repo: docker, dir: calibre,        service: calibre}
@@ -47,6 +49,10 @@ dnat:
   jellyfin: {port: 8096}   # docs/docker/DOCKER_IPTABLES_FIX.md
   immich:   {port: 2283}   # same doc; immich itself isn't recreated (Postgres/Redis stack)
   jackett:  {port: 9117}   # VPN-TORRENT-SETUP.md: published by mullvad-vpn, which jackett shares
+
+# Containers that share another's network (network_mode: container:...) and so die with its recreate (docker#165).
+netns:
+  jackett: {}   # jackett and flaresolverr share mullvad-vpn's namespace
 
 # BackupStale (rules/host.yml), keyed by its `repo` label (docker#159). A restic run only adds data,
 # and the DAG's max_active_runs: 1 stops overlaps. Suspended = pve01 maintenance: hands off.

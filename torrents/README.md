@@ -14,6 +14,8 @@ qBittorrent torrent client running through Mullvad VPN with kill switch protecti
 - **Mullvad VPN** - WireGuard VPN container (se-got-wg-008 server in Gothenburg, Sweden)
 - **qBittorrent** - Modern torrent client with web UI
 
+Jackett and FlareSolverr (`jackett/`) share mullvad-vpn's network namespace, so recreating mullvad-vpn strands them. `scripts/netns-orphans.sh` recreates any container left in a dead namespace; the weekly updater and the medic's `netns` playbook run it (docker#165).
+
 ## 🚀 Quick Start
 
 ```bash
