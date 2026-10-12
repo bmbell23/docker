@@ -14,6 +14,9 @@
 #               start change (compose, Dockerfile, mounted config), `up -d --build --force-recreate`.
 #               Forced because single-file mounts keep the pre-pull copy (docker#96). First sight
 #               of a stack only stamps it. A recreate cuts off whatever the container was doing.
+#   medic       (docker#168) medic.service runs scripts/medic/medic.py from this clone and never
+#               re-reads it: when a merge changes medic.py, compile-check it, then restart the user
+#               unit. First sight only stamps. A file that doesn't compile leaves the old process up.
 set -uo pipefail
 cd "$(dirname "$0")"
 
@@ -133,8 +136,37 @@ deploy_stacks() {
     return $rc
 }
 
+deploy_medic() {
+    # Only medic.py: targets.yaml is re-read on every alert, so editing it needs no restart.
+    local F=scripts/medic/medic.py i
+    local SC=${SYSTEMCTL:-systemctl}
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    stamp_ok medic "$F" && { echo "medic: unchanged since the last apply"; return 0; }
+    if ! $SC --user cat medic >/dev/null 2>&1; then
+        echo "medic: no medic.service user unit here; nothing to restart"; return 0
+    fi
+    if [ ! -f logs/deploy/medic-applied.sha256 ]; then
+        stamp medic "$F"; echo "medic: first sight; stamped, not restarted"; return 0
+    fi
+    # compile() instead of py_compile: no __pycache__ dropped into the clone
+    if ! python3 -c 'import sys; compile(open(sys.argv[1]).read(), sys.argv[1], "exec")' "$F"; then
+        echo "medic: medic.py doesn't compile; not restarted, the old one keeps running"; return 1
+    fi
+    if ! $SC --user restart medic; then
+        echo "medic: systemctl --user restart medic failed"; return 1
+    fi
+    for i in $(seq 10); do
+        if $SC --user is-active -q medic; then
+            stamp medic "$F"; echo "medic: medic.py changed; restarted (journalctl --user -u medic)"; return 0
+        fi
+        sleep 1
+    done
+    echo "medic: restarted, but the unit isn't active after 10 s (journalctl --user -u medic)"; return 1
+}
+
 rc=0
 deploy_monitoring || rc=1
 deploy_dagu || rc=1
 deploy_stacks || rc=1
+deploy_medic || rc=1
 exit $rc
