@@ -44,6 +44,45 @@ calibredb_gui() {
     return $rc
 }
 
+# GreatReads event ingest (#351): the watcher reports its steps so Bookworm can post a
+# Book Report. Best-effort: short timeout, every failure swallowed, never affects the watcher.
+GR_INGEST_URL="http://127.0.0.1:8092/api/events/ingest"
+declare -A GR_SEEN   # picked_up/failed repeat every poll on a retry; report each once per run
+
+# gr_event <event> <title> [calibre_id] [key=value ...]
+# Numeric values (words, pages) are sent as numbers, everything else as strings.
+gr_event() {
+    local json
+    json=$(python3 - "$@" <<'PY' 2>/dev/null
+import json, sys
+ev, title, cid = sys.argv[1:4]
+detail = {}
+for kv in sys.argv[4:]:
+    k, _, v = kv.partition("=")
+    if v:
+        detail[k] = int(v) if v.isdigit() else v
+body = {"category": "calibre", "event": ev, "title": title, "detail": detail}
+if ev == "failed":
+    body["level"] = "error"
+if cid.isdigit():
+    body["calibre_id"] = int(cid)
+print(json.dumps(body))
+PY
+    ) || return 0
+    [ -n "$json" ] || return 0
+    curl -s -m 5 -o /dev/null -X POST -H 'Content-Type: application/json' \
+        "$GR_INGEST_URL" -d "$json" >/dev/null 2>&1 || true
+    return 0
+}
+
+# Same as gr_event, but only the first time this run for a given event + file.
+gr_event_once() {
+    local key="$1|$2"
+    [ -n "${GR_SEEN[$key]}" ] && return 0
+    GR_SEEN[$key]=1
+    gr_event "$@"
+}
+
 mkdir -p "$(dirname "$PROCESSED_FILE")"
 touch "$PROCESSED_FILE"
 
@@ -96,6 +135,8 @@ finalize_book() {
     local filename="$2"
 
     log "Book added with ID: $book_id"
+    gr_event added "$filename" "$book_id"
+    local gr_words="" gr_pages="" gr_series=""
     log "Running Count Pages on book $book_id..."
 
     # Compute page/word counts — prints BOOK_PAGES=N and BOOK_WORDS=N to stdout
@@ -112,10 +153,12 @@ finalize_book() {
 
         if [ -n "$pages" ]; then
             calibredb_gui set_custom pages "$book_id" "$pages" >> "$LOG_FILE" 2>&1
+            gr_pages="$pages"
             log "Saved page count: $pages"
         fi
         if [ -n "$words" ]; then
             calibredb_gui set_custom word_count "$book_id" "$words" >> "$LOG_FILE" 2>&1
+            gr_words="$words"
             log "Saved word count: $words"
         fi
     fi
@@ -143,10 +186,12 @@ finalize_book() {
             # Apply series via calibredb (GUI-connected so the UI updates immediately)
             if [ -n "$meta_series" ]; then
                 calibredb_gui set_metadata "$book_id" --field "series:$meta_series" >> "$LOG_FILE" 2>&1
+                gr_series="$meta_series"
                 log "Saved series: $meta_series"
             fi
             if [ -n "$meta_idx" ]; then
                 calibredb_gui set_metadata "$book_id" --field "series_index:$meta_idx" >> "$LOG_FILE" 2>&1
+                [ -n "$gr_series" ] && gr_series="$gr_series #$meta_idx"
                 log "Saved series index: $meta_idx"
             fi
             if [ -n "$meta_date" ]; then
@@ -161,6 +206,7 @@ finalize_book() {
 
     # Mark as processed regardless of count pages result — book is in library
     echo "$filename" >> "$PROCESSED_FILE"
+    gr_event finalized "$filename" "$book_id" "words=$gr_words" "pages=$gr_pages" "series=$gr_series"
     log "Finished processing: $filename (book ID: $book_id)"
     return 0
 }
@@ -175,6 +221,7 @@ process_epub() {
     filename=$(basename "$epub_file")
 
     log "New EPUB detected: $filename"
+    gr_event_once picked_up "$filename" ""
     log "Adding to Calibre library..."
 
     local result
@@ -187,10 +234,12 @@ process_epub() {
     if [ -z "$book_id" ]; then
         if echo "$result" | grep -q "already exist in the database"; then
             log "Book already exists in library — marking as processed."
+            gr_event skipped_duplicate "$filename" ""
             echo "$filename" >> "$PROCESSED_FILE"
             return 0
         fi
         log "ERROR: Could not extract book ID for $filename — will retry next cycle."
+        gr_event_once failed "$filename" "" "reason=calibredb add gave no book id: $(echo "$result" | tail -n 1 | cut -c1-120)"
         return 1
     fi
 
@@ -204,6 +253,7 @@ process_acsm() {
     filename=$(basename "$acsm_file")
 
     log "New ACSM detected: $filename"
+    gr_event_once picked_up "$filename" ""
     log "Adding to Calibre library (fulfilling via deACSM + decrypting via DeDRM)..."
 
     # Add via GUI-connected calibredb so the GUI sees the new book immediately
@@ -218,10 +268,12 @@ process_acsm() {
     if [ -z "$book_id" ]; then
         if echo "$result" | grep -q "already exist in the database"; then
             log "Book already exists in library — marking as processed."
+            gr_event skipped_duplicate "$filename" ""
             echo "$filename" >> "$PROCESSED_FILE"
             return 0
         fi
         log "ERROR: Could not extract book ID — import may have failed. Will retry next cycle."
+        gr_event_once failed "$filename" "" "reason=calibredb add gave no book id: $(echo "$result" | tail -n 1 | cut -c1-120)"
         return 1
     fi
 
@@ -234,11 +286,13 @@ process_acsm() {
 
         if echo "$result" | grep -q "E_ADEPT_REQUEST_EXPIRED"; then
             log "ACSM appears expired; removed raw import and marking as processed."
+            gr_event failed "$filename" "" "reason=the ACSM expired before it could be fulfilled"
             echo "$filename" >> "$PROCESSED_FILE"
             return 0
         fi
 
         log "Removed raw ACSM import; leaving file unprocessed for retry next cycle."
+        gr_event_once failed "$filename" "" "reason=DeACSM fulfillment did not complete; will retry"
         return 1
     fi
 
