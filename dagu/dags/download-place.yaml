@@ -1,0 +1,17 @@
+# !download's second half (docker#177): every 2 minutes, torrents that !download added
+# (category dl-*) and that have finished get hardlinked into their library (keeps seeding,
+# no extra space), tagged `placed` in qBittorrent, and Brandon gets a DM. Idle poller:
+# #dagu only hears about runs that placed something.
+name: download-place
+description: Hardlink finished !download torrents into their media library
+schedule: "*/2 * * * *"
+tags: [media]
+max_active_runs: 1
+steps:
+  - name: place
+    command: ssh dockerhost '~/projects/docker/scripts/download/download.py place'
+handler_on:
+  failure:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh failed ${DAG_NAME} ${DAG_RUN_ID}"
+  success:
+    command: ssh dockerhost "~/projects/docker/scripts/dagu-alert.sh ok ${DAG_NAME} ${DAG_RUN_ID} idle"
