@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""!download: Jackett search -> pick a number -> qBittorrent -> the right library (docker#177).
+
+  download.py help                       the categories
+  download.py <search words> [category]  top results by seeders; saved for the pick
+  download.py <n>                        add result n of the last search to qBittorrent
+  download.py place                      (dagu, every 2 min) hardlink finished downloads into
+                                         their library, tag them `placed`, tell Brandon
+
+Run by the router as `!download …` (argv only, stdout is the chat reply) and by the dagu job
+download-place. Stdlib only. The Jackett API key is read at runtime from KEY_FILE and never
+printed; it reaches qBittorrent on stdin, not argv.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+JACKETT = os.environ.get("JACKETT_URL", "http://127.0.0.1:9117")
+KEY_FILE = Path(os.environ.get("JACKETT_KEY_FILE", Path.home() / ".config/download/jackett-api-key"))
+STATE = Path(os.environ.get("DOWNLOAD_STATE", Path.home() / ".local/state/download"))
+MEDIA = Path(os.environ.get("MEDIA_ROOT", "/mnt/boston/media"))
+TORRENTS_HOST = MEDIA / "downloads/torrents"   # qBittorrent's /downloads
+SAY = os.environ.get("DOWNLOAD_SAY", "/home/brandon/projects/agent-bus/bin/say")
+TOP = 5
+
+# name: (Jackett/Torznab category ids, library dir under MEDIA, what it feeds)
+CATEGORIES = {
+    "audiobook": ([3030], "audiobooks", "Audiobookshelf"),
+    "book":      ([7000, 7020], "downloads/books", "Calibre (then GreatReads)"),
+    "music":     ([3000], "music", "Jellyfin music"),
+    "movie":     ([2000], "videos/movies", "Jellyfin"),
+    "tv":        ([5000], "videos/shows", "Jellyfin"),
+    "xxx":       ([6000], "other", "Stash"),
+    "game":      ([1000, 4050], "games", "RomM, by platform"),
+}
+ALIASES = {"audiobooks": "audiobook", "books": "book", "ebook": "book", "ebooks": "book",
+           "movies": "movie", "film": "movie", "show": "tv", "shows": "tv", "games": "game", "porn": "xxx"}
+
+GAME_EXT = {".gba": "gba", ".gb": "gb", ".gbc": "gbc", ".nes": "nes", ".sfc": "snes", ".smc": "snes",
+            ".n64": "n64", ".z64": "n64", ".v64": "n64", ".md": "genesis", ".gen": "genesis",
+            ".smd": "genesis", ".sms": "mastersystem", ".rvz": "ngc", ".gcm": "ngc", ".gcz": "ngc",
+            ".wbfs": "wii", ".nds": "nds", ".3ds": "3ds", ".cue": "ps1", ".a26": "atari2600"}
+
+
+def fail(msg):
+    """Errors go to stdout: only stdout reaches chat (the router relays exit 1)."""
+    print(msg)
+    sys.exit(1)
+
+
+def category_of(word):
+    w = word.lower()
+    return w if w in CATEGORIES else ALIASES.get(w)
+
+
+def category_from_ids(ids):
+    """Our category for a result's Torznab ids (first match), or None."""
+    for i in ids:
+        if i == 3030:
+            return "audiobook"
+        if i == 4050 or 1000 <= i < 2000:
+            return "game"
+        for name, lo in (("movie", 2000), ("music", 3000), ("tv", 5000), ("xxx", 6000), ("book", 7000)):
+            if lo <= i < lo + 1000:
+                return name
+    return None
+
+
+def human(n):
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit in ("B", "KB") else f"{n:.1f} {unit}"
+        n /= 1024
+
+
+def help_text():
+    rows = "\n".join(f"| `{n}` | {', '.join(map(str, ids))} | {feeds} |" for n, (ids, _, feeds) in CATEGORIES.items())
+    return ("**`!download <search> [category]`**: top results by seeders. Then **`!download <n>`** grabs one; "
+            "when it finishes it's hardlinked into its library and I DM you.\n\n"
+            "| category | Jackett ids | lands in |\n|---|---|---|\n" + rows +
+            "\n\nNo category = search everything (the pick still lands by the result's own category).")
+
+
+# --- Jackett -----------------------------------------------------------------------------
+
+def jackett_search(query, cat):
+    if not KEY_FILE.is_file():
+        fail(f"No Jackett API key yet: put it in `{KEY_FILE}` (Jackett UI, top right), mode 600.")
+    params = [("apikey", KEY_FILE.read_text().strip()), ("Query", query)]
+    params += [("Category[]", str(i)) for i in (CATEGORIES[cat][0] if cat else [])]
+    url = f"{JACKETT}/api/v2.0/indexers/all/results?" + urllib.parse.urlencode(params)
+    try:
+        with urllib.request.urlopen(url, timeout=90) as r:
+            return json.load(r).get("Results", [])
+    except OSError as e:   # never echo the URL: it holds the key
+        fail(f"Jackett didn't answer ({type(e).__name__}). Is the VPN stack up?")
+
+
+def top_results(results, n=TOP):
+    ok = [r for r in results if r.get("MagnetUri") or r.get("Link")]
+    ok.sort(key=lambda r: r.get("Seeders") or 0, reverse=True)
+    return ok[:n]
+
+
+def search(words):
+    cat = category_of(words[-1]) if len(words) > 1 else None
+    query = " ".join(words[:-1] if cat else words)
+    picks = top_results(jackett_search(query, cat))
+    if not picks:
+        return f"Nothing found for **{query}**" + (f" in `{cat}`." if cat else ".")
+    saved = []
+    lines = [f"**Top {len(picks)} for \"{query}\"**" + (f" · `{cat}`" if cat else "") + ", by seeders:"]
+    for i, r in enumerate(picks, 1):
+        rcat = cat or category_from_ids(r.get("Category") or []) or "other"
+        saved.append({"title": r.get("Title", "?"), "magnet": r.get("MagnetUri") or "", "link": r.get("Link") or "",
+                      "category": rcat})
+        lines.append(f"{i}. **{r.get('Title', '?')}** · {human(r.get('Size') or 0)} · "
+                     f"{r.get('Seeders') or 0} seeders · {r.get('Tracker', '?')} · `{rcat}`")
+    STATE.mkdir(parents=True, exist_ok=True)
+    (STATE / "last.json").write_text(json.dumps(saved))
+    lines.append("\nGrab one with `!download <n>`.")
+    return "\n".join(lines)
+
+
+# --- qBittorrent (WebUI API inside its container: localhost auth bypass is on) ------------
+
+def qbit(path, fields=None, stdin_url=None):
+    """GET (no fields) or multipart POST to qBittorrent's API. stdin_url goes in as `urls` via
+    curl's `<-` so a Jackett link (with its key) never shows on a command line."""
+    cmd = ["docker", "exec", "-i", "qbittorrent", "curl", "-sS", "-m", "30", "--fail"]
+    for k, v in (fields or {}).items():   # multipart for torrents/add, form-urlencoded for the rest
+        cmd += ["-F", f"{k}={v}"] if stdin_url is not None else ["--data-urlencode", f"{k}={v}"]
+    if stdin_url is not None:
+        cmd += ["-F", "urls=<-"]
+    cmd.append(f"http://127.0.0.1:8080/api/v2/{path}")
+    out = subprocess.run(cmd, input=stdin_url or "", capture_output=True, text=True, timeout=60)
+    if out.returncode:
+        fail(f"qBittorrent refused `{path.split('?')[0]}` (curl exit {out.returncode}).")
+    return out.stdout
+
+
+def pick(n):
+    try:
+        saved = json.loads((STATE / "last.json").read_text())
+    except (OSError, ValueError):
+        return "No search to pick from yet: `!download <search>` first."
+    if not 1 <= n <= len(saved):
+        return f"Pick 1–{len(saved)} from the last search."
+    r = saved[n - 1]
+    qbit("torrents/add", {"category": f"dl-{r['category']}"}, stdin_url=r["magnet"] or r["link"])
+    where = CATEGORIES[r["category"]][2] if r["category"] in CATEGORIES else "the torrents folder only (no category)"
+    return f"Downloading **{r['title']}** (`dl-{r['category']}`). When it's done it goes to {where}, and I'll DM you."
+
+
+# --- placement ---------------------------------------------------------------------------
+
+def game_platform(path):
+    """RomM platform folder for a game file (or the biggest file in a folder), else None."""
+    if path.is_dir():
+        files = [f for f in path.rglob("*") if f.is_file()]
+        if not files:
+            return None
+        path = max(files, key=lambda f: f.stat().st_size)
+    ext = path.suffix.lower()
+    if ext == ".iso":
+        try:
+            with open(path, "rb") as f:
+                head = f.read(0x20)
+        except OSError:
+            return None
+        if head[0x1C:0x20] == b"\xc2\x33\x9f\x3d":
+            return "ngc"
+        if head[0x18:0x1C] == b"\x5d\x1c\x9e\xa3":
+            return "wii"
+        return None
+    return GAME_EXT.get(ext)
+
+
+def link_tree(src, dest):
+    """Hardlink src (file or folder) to dest; copy where the filesystem won't link. Returns files made."""
+    made = 0
+    for f in ([src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())):
+        target = dest if src.is_file() else dest / f.relative_to(src)
+        if target.exists():
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(f, target)
+        except OSError:
+            shutil.copy2(f, target)
+        made += 1
+    return made
+
+
+def destination(cat, src):
+    """Library path for a finished download, and a note when it's a guess."""
+    lib = MEDIA / CATEGORIES[cat][1]
+    if cat != "game":
+        return lib / src.name, ""
+    plat = game_platform(src)
+    if plat:
+        return lib / plat / src.name, ""
+    return MEDIA / "games-staging" / src.name, " (platform unknown: in games-staging, move it to games/<platform>)"
+
+
+def host_path(container_path):
+    p = Path(container_path)
+    return TORRENTS_HOST / p.relative_to("/downloads") if p.is_relative_to("/downloads") else p
+
+
+def place():
+    torrents = json.loads(qbit("torrents/info?filter=completed") or "[]")
+    done = []
+    for t in torrents:
+        cat = (t.get("category") or "").removeprefix("dl-")
+        if not t.get("category", "").startswith("dl-") or "placed" in (t.get("tags") or "").split(", "):
+            continue
+        src = host_path(t["content_path"])
+        if cat not in CATEGORIES:
+            qbit("torrents/addTags", {"hashes": t["hash"], "tags": "placed"})
+            done.append(f"✅ **{t['name']}** finished. No category, so it stays in `{src.parent}`.")
+            continue
+        if not src.exists():
+            print(f"{t['name']}: {src} not found; will retry", file=sys.stderr)
+            continue
+        dest, note = destination(cat, src)
+        n = link_tree(src, dest)
+        qbit("torrents/addTags", {"hashes": t["hash"], "tags": "placed"})
+        done.append(f"✅ **{t['name']}** → `{dest}` ({n} file{'s' * (n != 1)}, {CATEGORIES[cat][2]}){note}")
+    if done:
+        msg = "\n".join(done)
+        print(msg)
+        if os.path.exists(SAY):
+            subprocess.run([SAY, "dakota", "@brandon", "-"], input=msg, text=True, timeout=200)
+    return ""
+
+
+def main(argv):
+    if not argv or argv[0].lower() in ("help", "-h", "--help"):
+        return help_text()
+    if argv == ["place"]:
+        return place()
+    if len(argv) == 1 and re.fullmatch(r"\d{1,2}", argv[0]):
+        return pick(int(argv[0]))
+    return search(argv)
+
+
+if __name__ == "__main__":
+    out = main(sys.argv[1:])
+    if out:
+        print(out)
