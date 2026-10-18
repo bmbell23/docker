@@ -8,6 +8,8 @@ services:
       dockerfile: Dockerfile
     image: yt-dlp-web:local
     restart: unless-stopped
+    depends_on:
+      - bgutil-provider
     ports:
       - "8998:3033"
     # Override image ENTRYPOINT to enable file logging (-fl) to a host-mounted path.
@@ -77,4 +79,14 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
+
+  # PO-token provider for YouTube (docker#179): yt-dlp's bgutil plugin asks it for a token
+  # per video. Compose network only (bgutil-provider:4416), no host port. Pinned to the
+  # plugin's version in the Dockerfile.
+  bgutil-provider:
+    container_name: bgutil-provider
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.2
+    init: true
+    restart: unless-stopped
+    mem_limit: 512m
 
