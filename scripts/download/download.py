@@ -5,7 +5,9 @@
   download.py <search words> [category]  top results by seeders; saved for the pick
   download.py <n>                        add result n of the last search to qBittorrent
   download.py place                      (dagu, every 2 min) hardlink finished downloads into
-                                         their library, tag them `placed`, tell Brandon
+                                         their library, tag them `placed`, tell Brandon. Movies
+                                         land as `Title (Year)/Title (Year).mkv`, TV as
+                                         `Show/Season NN/`, minus .nfo/.txt junk (docker#180)
 
 Run by the router as `!download …` (argv only, stdout is the chat reply) and by the dagu job
 download-place. Stdlib only. The Jackett API key is read at runtime from KEY_FILE and never
@@ -182,11 +184,113 @@ def game_platform(path):
     return GAME_EXT.get(ext)
 
 
-def link_tree(src, dest):
-    """Hardlink src (file or folder) to dest; copy where the filesystem won't link. Returns files made."""
+VIDEO_EXT = {".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".ts", ".webm", ".mpg"}
+SUB_EXT = {".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt"}
+JUNK_EXT = {".nfo", ".txt", ".url", ".exe", ".lnk", ".html", ".htm", ".sfv", ".md5"}
+SITE = re.compile(r"^\s*(?:\[[^\]]*\]|\(?(?:www\.)?[\w-]+\.(?:org|com|net|to|me|cc|io|xyz|in)\)?)\s*[-_.]*\s*", re.I)
+YEAR = re.compile(r"(?<!\d)((?:19|20)\d\d)(?!\d)")
+SEASON = re.compile(r"\bS(\d{1,2})(?=E\d|\b|[\s._-])|\bSeason[\s._-]*(\d{1,2})\b", re.I)
+
+
+def tidy(name):
+    """A torrent name as words: extension, site prefixes, dots and underscores gone."""
+    if Path(name).suffix.lower() in VIDEO_EXT:
+        name = Path(name).stem
+    while SITE.match(name) and SITE.sub("", name, count=1) != name:
+        name = SITE.sub("", name, count=1)
+    return re.sub(r"\s+", " ", re.sub(r"[._]", " ", name)).strip()
+
+
+def trim(title):
+    return re.sub(r"[\s(\[\-]+$", "", title).strip()
+
+
+def movie_name(name):
+    """'www.X.org - The Movie 2023 UHD x265-GRP' -> 'The Movie (2023)'; None without a year."""
+    t = tidy(name)
+    for m in reversed(list(YEAR.finditer(t))):
+        title, year = trim(t[:m.start()]), m.group(1)
+        run = re.search(r"((?:19|20)\d\d)(?:\s*,\s*(?:19|20)\d\d)*\s*,$", title)   # "1985,1989,1990"
+        if run:
+            title, year = trim(title[:run.start()]), run.group(1)
+        if title:
+            return f"{title} ({year})"
+    return None
+
+
+def show_name(name):
+    """'Show.Name.2019.S02E03.1080p' -> ('Show Name (2019)', 2); None without a season."""
+    t = tidy(name)
+    m = SEASON.search(t)
+    if not m:
+        return None
+    title, season = trim(t[:m.start()]), int(m.group(1) or m.group(2))
+    y = YEAR.search(title)
+    if y and trim(title[:y.start()]):
+        title = f"{trim(title[:y.start()])} ({y.group(1)})"
+    return (title, season) if title else None
+
+
+def season_of(name):
+    m = SEASON.search(tidy(name))
+    return int(m.group(1) or m.group(2)) if m else None
+
+
+def media_files(src):
+    """Files worth placing: no .nfo/.txt junk, no samples."""
+    files = [src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())
+    keep = []
+    for f in files:
+        rel = f.name if src.is_file() else str(f.relative_to(src))
+        if f.suffix.lower() in JUNK_EXT or re.search(r"(^|[\s._/-])sample([\s._/-]|$)", rel, re.I):
+            continue
+        keep.append(f)
+    return keep
+
+
+def movie_plan(lib, src):
+    clean = movie_name(src.name)
+    if not clean:
+        return None
+    files = media_files(src)
+    videos = [f for f in files if f.suffix.lower() in VIDEO_EXT]
+    big = max((f.stat().st_size for f in videos), default=0)
+    mains = [f for f in videos if f.stat().st_size * 2 >= big]
+    main = mains[0] if len(mains) == 1 else None   # a pack of films keeps its file names
+    dest, plan = lib / clean, []
+    for f in files:
+        if f == main:
+            target = dest / f"{clean}{f.suffix.lower()}"
+        elif main and f.suffix.lower() in SUB_EXT:
+            rest = f.stem[len(main.stem):] if f.stem.startswith(main.stem) else "." + f.stem.split(".")[-1].split("_")[-1]
+            target = dest / f"{clean}{rest}{f.suffix.lower()}"
+        else:
+            target = dest / (f.name if src.is_file() else f.relative_to(src))
+        plan.append((f, target))
+    return dest, plan
+
+
+def show_plan(lib, src):
+    named = show_name(src.name)
+    if not named:
+        return None
+    show, season = named
+    dest, plan = lib / show, []
+    for f in media_files(src):
+        s = season_of(f.name) or season
+        plan.append((f, dest / f"Season {s:02d}" / f.name))
+    return dest, plan
+
+
+def raw_plan(dest, src):
+    files = [src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())
+    return [(f, dest if src.is_file() else dest / f.relative_to(src)) for f in files]
+
+
+def link_files(plan):
+    """Hardlink each (src, target); copy where the filesystem won't link. Returns files made."""
     made = 0
-    for f in ([src] if src.is_file() else sorted(p for p in src.rglob("*") if p.is_file())):
-        target = dest if src.is_file() else dest / f.relative_to(src)
+    for f, target in plan:
         if target.exists():
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -199,14 +303,21 @@ def link_tree(src, dest):
 
 
 def destination(cat, src):
-    """Library path for a finished download, and a note when it's a guess."""
+    """(library path, [(file, target)], note) for a finished download; the note flags a guess."""
     lib = MEDIA / CATEGORIES[cat][1]
+    if cat in ("movie", "tv"):
+        planned = (movie_plan if cat == "movie" else show_plan)(lib, src)
+        if planned:
+            return *planned, ""
+        what = "a title and year" if cat == "movie" else "a season (S01)"
+        return lib / src.name, raw_plan(lib / src.name, src), f" (couldn't read {what}: kept the torrent's name)"
     if cat != "game":
-        return lib / src.name, ""
+        return lib / src.name, raw_plan(lib / src.name, src), ""
     plat = game_platform(src)
     if plat:
-        return lib / plat / src.name, ""
-    return MEDIA / "games-staging" / src.name, " (platform unknown: in games-staging, move it to games/<platform>)"
+        return lib / plat / src.name, raw_plan(lib / plat / src.name, src), ""
+    dest = MEDIA / "games-staging" / src.name
+    return dest, raw_plan(dest, src), " (platform unknown: in games-staging, move it to games/<platform>)"
 
 
 def host_path(container_path):
@@ -229,8 +340,8 @@ def place():
         if not src.exists():
             print(f"{t['name']}: {src} not found; will retry", file=sys.stderr)
             continue
-        dest, note = destination(cat, src)
-        n = link_tree(src, dest)
+        dest, plan, note = destination(cat, src)
+        n = link_files(plan)
         qbit("torrents/addTags", {"hashes": t["hash"], "tags": "placed"})
         done.append(f"✅ **{t['name']}** → `{dest}` ({n} file{'s' * (n != 1)}, {CATEGORIES[cat][2]}){note}")
     if done:

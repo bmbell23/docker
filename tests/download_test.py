@@ -139,6 +139,51 @@ class Place(Base):
         dl.main(["place"])
         self.assertEqual([c for c in self.calls if c[0] == "torrents/addTags"], [])
 
+    def folder(self, name, cat, files):
+        d = dl.TORRENTS_HOST / name
+        for rel, data in files.items():
+            (d / rel).parent.mkdir(parents=True, exist_ok=True)
+            (d / rel).write_bytes(data)
+        self.torrents.append({"name": name, "hash": name, "category": cat, "tags": "",
+                              "content_path": f"/downloads/{name}"})
+
+    def test_movie_clean_name_and_junk_dropped(self):   # docker#180: the Mario download
+        rel = "The Super Mario Bros Movie 2023 UHD BluRay 1080p DD Atmos 5 1 DoVi HDR10 x265-SM737"
+        name = f"www.UIndex.org    -    {rel}"
+        self.folder(name, "dl-movie", {f"{rel}.mkv": b"v" * 100, f"{rel}.mkv.nfo": b"n",
+                                       f"{rel}.en.srt": b"s", "Sample/sample.mkv": b"x",
+                                       "Torrent Downloaded From     UIndex.org      .txt": b"t"})
+        dl.main(["place"])
+        d = dl.MEDIA / "videos/movies/The Super Mario Bros Movie (2023)"
+        self.assertEqual(sorted(p.name for p in d.rglob("*") if p.is_file()),
+                         ["The Super Mario Bros Movie (2023).en.srt", "The Super Mario Bros Movie (2023).mkv"])
+
+    def test_names(self):
+        self.assertEqual(dl.movie_name("Blade.Runner.2049.2017.2160p.x265-GRP.mkv"), "Blade Runner 2049 (2017)")
+        self.assertEqual(dl.movie_name("1917 (2019) [1080p] [YTS.MX]"), "1917 (2019)")
+        self.assertEqual(dl.movie_name("[YTS.MX] Clueless (1995) [BluRay]"), "Clueless (1995)")
+        self.assertEqual(dl.movie_name("Back To The Future Trilogy 1985,1989,1990 Remastered 1080p"),
+                         "Back To The Future Trilogy (1985)")
+        self.assertIsNone(dl.movie_name("Film.mkv"))
+        self.assertEqual(dl.show_name("The.Office.US.S02E03.720p.WEB"), ("The Office US", 2))
+        self.assertEqual(dl.show_name("Doctor.Who.2005.S01.COMPLETE.1080p"), ("Doctor Who (2005)", 1))
+        self.assertEqual(dl.show_name("Bluey Season 3 1080p"), ("Bluey", 3))
+        self.assertIsNone(dl.show_name("Some Documentary 1080p"))
+
+    def test_tv_season_folders(self):
+        self.folder("Bluey.S01-S02.1080p", "dl-tv", {"Bluey.S01E01.mkv": b"a", "S2/Bluey.S02E05.mkv": b"b",
+                                                    "info.nfo": b"n"})
+        dl.main(["place"])
+        d = dl.MEDIA / "videos/shows/Bluey"
+        self.assertTrue((d / "Season 01/Bluey.S01E01.mkv").exists())
+        self.assertTrue((d / "Season 02/Bluey.S02E05.mkv").exists())
+        self.assertFalse(list(d.rglob("*.nfo")))
+
+    def test_unreadable_name_falls_back(self):
+        self.torrent("Mystery Film.mkv", "dl-movie")
+        dl.main(["place"])
+        self.assertTrue((dl.MEDIA / "videos/movies/Mystery Film.mkv").exists())
+
 
 if __name__ == "__main__":
     sys.stderr = open(os.devnull, "w") if "-q" in sys.argv else sys.stderr
