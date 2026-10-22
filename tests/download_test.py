@@ -45,7 +45,7 @@ class Search(Base):
 
     def test_sorted_top5_and_saved(self):
         seen = {}
-        dl.jackett_search = lambda q, c: seen.update(q=q, c=c) or self.results()
+        dl.jackett_search = lambda q, c: seen.update(q=q, c=c) or (self.results(), [])
         out = dl.main(["melee", "game"])
         self.assertEqual(seen, {"q": "melee", "c": "game"})
         self.assertIn("1. **High**", out)
@@ -56,7 +56,7 @@ class Search(Base):
         self.assertEqual(saved[0]["category"], "game")   # the search category wins
 
     def test_no_category_uses_result_ids(self):
-        dl.jackett_search = lambda q, c: self.results()
+        dl.jackett_search = lambda q, c: (self.results(), [])
         out = dl.main(["dune", "part", "two"])
         self.assertIn('"dune part two"', out)
         saved = json.loads((dl.STATE / "last.json").read_text())
@@ -72,7 +72,7 @@ class Search(Base):
         self.assertIsNone(dl.category_from_ids([100123]))
 
     def test_pick_sends_url_on_stdin(self):
-        dl.jackett_search = lambda q, c: self.results()
+        dl.jackett_search = lambda q, c: (self.results(), [])
         dl.main(["x"])
         out = dl.main(["1"])
         path, fields, url = self.calls[-1]
@@ -88,6 +88,53 @@ class Search(Base):
         out = dl.main(["help"])
         for c in dl.CATEGORIES:
             self.assertIn(f"`{c}`", out)
+
+
+INDEXERS_XML = b"""<indexers>
+<indexer id="audiobookbay" configured="true"><title>AudioBook Bay</title><caps><categories>
+  <category id="3000"><subcat id="3030"/></category></categories></caps></indexer>
+<indexer id="tpb" configured="true"><title>The Pirate Bay</title><caps><categories>
+  <category id="2000"/><category id="3000"/><category id="5000"/></categories></caps></indexer>
+<indexer id="dead" configured="true"><title>Dead One</title><caps><categories>
+  <category id="2000"/></categories></caps></indexer>
+</indexers>"""
+
+
+class Indexers(Base):
+    """docker#182: one hanging indexer must not sink the search, and gets named."""
+    def setUp(self):
+        super().setUp()
+        dl.KEY_FILE = self.tmp / "key"
+        dl.KEY_FILE.write_text("SECRET\n")
+        self.asked = []
+
+        def fake_get(path, params, timeout):
+            self.asked.append(path)
+            if "torznab" in path:
+                return INDEXERS_XML
+            if "/dead/" in path:
+                raise TimeoutError("timed out")
+            return json.dumps({"Results": [{"Title": path, "Seeders": 5, "MagnetUri": "magnet:?x", "Category": [2000]}]}).encode()
+        dl.jackett_get = fake_get
+
+    def test_category_skips_indexers_without_it(self):
+        self.assertEqual([i for i, _ in dl.indexers_for("movie")], ["tpb", "dead"])
+        self.assertEqual([i for i, _ in dl.indexers_for("audiobook")], ["audiobookbay", "tpb"])
+        self.assertEqual(len(dl.indexers_for(None)), 3)
+
+    def test_dead_indexer_skipped_and_named(self):
+        out = dl.main(["10", "things", "i", "hate", "about", "you", "movie"])
+        self.assertIn("indexers/tpb/results", out)              # the live one answered
+        self.assertIn("Skipped: Dead One (no answer in", out)
+        self.assertNotIn("audiobookbay", " ".join(self.asked))  # not asked for a movie
+        self.assertNotIn("VPN", out)
+
+    def test_jackett_down_blames_jackett(self):
+        def down(path, params, timeout):
+            raise OSError("refused")
+        dl.jackett_get = down
+        with self.assertRaises(SystemExit):
+            dl.main(["dune", "movie"])
 
 
 class Place(Base):

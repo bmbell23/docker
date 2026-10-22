@@ -21,6 +21,8 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 JACKETT = os.environ.get("JACKETT_URL", "http://127.0.0.1:9117")
@@ -30,6 +32,7 @@ MEDIA = Path(os.environ.get("MEDIA_ROOT", "/mnt/boston/media"))
 TORRENTS_HOST = MEDIA / "downloads/torrents"   # qBittorrent's /downloads
 SAY = os.environ.get("DOWNLOAD_SAY", "/home/brandon/projects/agent-bus/bin/say")
 TOP = 5
+INDEXER_TIMEOUT = 30   # seconds per indexer; slower ones are skipped and named (docker#182)
 
 # name: (Jackett/Torznab category ids, library dir under MEDIA, what it feeds)
 CATEGORIES = {
@@ -91,17 +94,54 @@ def help_text():
 
 # --- Jackett -----------------------------------------------------------------------------
 
-def jackett_search(query, cat):
+def jackett_get(path, params, timeout):
+    """GET a Jackett API path. Raises OSError; never let the URL into a message: it holds the key."""
+    url = f"{JACKETT}/api/v2.0/{path}?" + urllib.parse.urlencode([("apikey", api_key())] + params)
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return r.read()
+
+
+def api_key():
     if not KEY_FILE.is_file():
         fail(f"No Jackett API key yet: put it in `{KEY_FILE}` (Jackett UI, top right), mode 600.")
-    params = [("apikey", KEY_FILE.read_text().strip()), ("Query", query)]
-    params += [("Category[]", str(i)) for i in (CATEGORIES[cat][0] if cat else [])]
-    url = f"{JACKETT}/api/v2.0/indexers/all/results?" + urllib.parse.urlencode(params)
+    return KEY_FILE.read_text().strip()
+
+
+def indexers_for(cat):
+    """Configured indexers [(id, title)] whose caps cover `cat` (all of them when cat is None).
+    A cap matches when it sits in the same thousand-block as one of the category's ids."""
     try:
-        with urllib.request.urlopen(url, timeout=90) as r:
-            return json.load(r).get("Results", [])
-    except OSError as e:   # never echo the URL: it holds the key
-        fail(f"Jackett didn't answer ({type(e).__name__}). Is the VPN stack up?")
+        xml = jackett_get("indexers/all/results/torznab/api", [("t", "indexers"), ("configured", "true")], 15)
+    except OSError as e:
+        fail(f"Jackett itself didn't answer ({type(e).__name__}). Is the VPN stack up?")
+    blocks = {i // 1000 for i in CATEGORIES[cat][0]} if cat else None
+    out = []
+    for ix in ET.fromstring(xml).findall("indexer"):
+        caps = {int(c.get("id")) // 1000 for c in ix.iter("category") if (c.get("id") or "").isdigit()}
+        if blocks is None or caps & blocks:
+            out.append((ix.get("id"), ix.findtext("title") or ix.get("id")))
+    return out
+
+
+def jackett_search(query, cat):
+    """Search each matching indexer in parallel, each with its own timeout, so one dead
+    indexer can't sink the whole search (docker#182). Returns (results, [problem, ...])."""
+    params = [("Query", query)] + [("Category[]", str(i)) for i in (CATEGORIES[cat][0] if cat else [])]
+
+    def one(ix):
+        return json.loads(jackett_get(f"indexers/{ix[0]}/results", params, INDEXER_TIMEOUT)).get("Results", [])
+
+    results, problems = [], []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for ix, fut in [(ix, pool.submit(one, ix)) for ix in indexers_for(cat)]:
+            try:
+                results += fut.result()
+            except (OSError, ValueError) as e:
+                if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):
+                    problems.append(f"{ix[1]} (no answer in {INDEXER_TIMEOUT}s)")
+                    continue
+                problems.append(f"{ix[1]} ({getattr(e, 'code', None) or type(e).__name__})")
+    return results, problems
 
 
 def top_results(results, n=TOP):
@@ -113,9 +153,11 @@ def top_results(results, n=TOP):
 def search(words):
     cat = category_of(words[-1]) if len(words) > 1 else None
     query = " ".join(words[:-1] if cat else words)
-    picks = top_results(jackett_search(query, cat))
+    found, problems = jackett_search(query, cat)
+    picks = top_results(found)
+    skipped = f"\n\n_Skipped: {', '.join(problems)}._" if problems else ""
     if not picks:
-        return f"Nothing found for **{query}**" + (f" in `{cat}`." if cat else ".")
+        return f"Nothing found for **{query}**" + (f" in `{cat}`." if cat else ".") + skipped
     saved = []
     lines = [f"**Top {len(picks)} for \"{query}\"**" + (f" · `{cat}`" if cat else "") + ", by seeders:"]
     for i, r in enumerate(picks, 1):
@@ -127,7 +169,7 @@ def search(words):
     STATE.mkdir(parents=True, exist_ok=True)
     (STATE / "last.json").write_text(json.dumps(saved))
     lines.append("\nGrab one with `!download <n>`.")
-    return "\n".join(lines)
+    return "\n".join(lines) + skipped
 
 
 # --- qBittorrent (WebUI API inside its container: localhost auth bypass is on) ------------
