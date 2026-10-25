@@ -40,3 +40,4 @@ repos:
   - {name: Proxmox,    path: /home/brandon/projects/Proxmox,    enabled: true}
   - {name: WebForge,   path: /home/brandon/projects/WebForge,   enabled: true, apk: scripts/build-apk.sh}
   - {name: WordForge,  path: /home/brandon/projects/WordForge,  enabled: true}
+  - {name: WorkForge,  path: /home/brandon/projects/WorkForge,  enabled: true}
