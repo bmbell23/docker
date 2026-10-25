@@ -109,7 +109,8 @@ def api_key():
 
 def indexers_for(cat):
     """Configured indexers [(id, title)] whose caps cover `cat` (all of them when cat is None).
-    A cap matches when it sits in the same thousand-block as one of the category's ids."""
+    A cap matches when it sits in the same thousand-block as one of the category's ids; a general
+    indexer (cap 8000 "Other", e.g. Torrents.csv) matches everything (docker#186)."""
     try:
         xml = jackett_get("indexers/all/results/torznab/api", [("t", "indexers"), ("configured", "true")], 15)
     except OSError as e:
@@ -118,15 +119,17 @@ def indexers_for(cat):
     out = []
     for ix in ET.fromstring(xml).findall("indexer"):
         caps = {int(c.get("id")) // 1000 for c in ix.iter("category") if (c.get("id") or "").isdigit()}
-        if blocks is None or caps & blocks:
+        if blocks is None or caps & blocks or 8 in caps:
             out.append((ix.get("id"), ix.findtext("title") or ix.get("id")))
     return out
 
 
 def jackett_search(query, cat):
     """Search each matching indexer in parallel, each with its own timeout, so one dead
-    indexer can't sink the whole search (docker#182). Returns (results, [problem, ...])."""
-    params = [("Query", query)] + [("Category[]", str(i)) for i in (CATEGORIES[cat][0] if cat else [])]
+    indexer can't sink the whole search (docker#182). Returns (results, [problem, ...]).
+    No Category[] goes to Jackett: its filter drops subcategory hits (The Pirate Bay's 2040 for a
+    2000 search), so we filter here, keeping uncategorised results (docker#186)."""
+    params = [("Query", query)]
 
     def one(ix):
         return json.loads(jackett_get(f"indexers/{ix[0]}/results", params, INDEXER_TIMEOUT)).get("Results", [])
@@ -141,6 +144,8 @@ def jackett_search(query, cat):
                     problems.append(f"{ix[1]} (no answer in {INDEXER_TIMEOUT}s)")
                     continue
                 problems.append(f"{ix[1]} ({getattr(e, 'code', None) or type(e).__name__})")
+    if cat:
+        results = [r for r in results if category_from_ids(r.get("Category") or []) in (cat, None)]
     return results, problems
 
 

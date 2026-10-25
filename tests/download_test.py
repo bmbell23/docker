@@ -97,6 +97,8 @@ INDEXERS_XML = b"""<indexers>
   <category id="2000"/><category id="3000"/><category id="5000"/></categories></caps></indexer>
 <indexer id="dead" configured="true"><title>Dead One</title><caps><categories>
   <category id="2000"/></categories></caps></indexer>
+<indexer id="csv" configured="true"><title>Torrents.csv</title><caps><categories>
+  <category id="8000"/></categories></caps></indexer>
 </indexers>"""
 
 
@@ -114,17 +116,31 @@ class Indexers(Base):
                 return INDEXERS_XML
             if "/dead/" in path:
                 raise TimeoutError("timed out")
+            self.params = params
+            if "/tpb/" in path:   # Jackett tags TPB hits with subcats; a song must be filtered out
+                return json.dumps({"Results": [
+                    {"Title": "Mummy 1999 YIFY", "Seeders": 433, "MagnetUri": "magnet:?m", "Category": [2040, 100207]},
+                    {"Title": "Mummy OST", "Seeders": 999, "MagnetUri": "magnet:?s", "Category": [3000]}]}).encode()
+            if "/csv/" in path:   # uncategorised: kept
+                return json.dumps({"Results": [{"Title": "Mummy csv", "Seeders": 381, "MagnetUri": "magnet:?c", "Category": [8000]}]}).encode()
             return json.dumps({"Results": [{"Title": path, "Seeders": 5, "MagnetUri": "magnet:?x", "Category": [2000]}]}).encode()
         dl.jackett_get = fake_get
 
     def test_category_skips_indexers_without_it(self):
-        self.assertEqual([i for i, _ in dl.indexers_for("movie")], ["tpb", "dead"])
-        self.assertEqual([i for i, _ in dl.indexers_for("audiobook")], ["audiobookbay", "tpb"])
-        self.assertEqual(len(dl.indexers_for(None)), 3)
+        self.assertEqual([i for i, _ in dl.indexers_for("movie")], ["tpb", "dead", "csv"])
+        self.assertEqual([i for i, _ in dl.indexers_for("audiobook")], ["audiobookbay", "tpb", "csv"])
+        self.assertEqual(len(dl.indexers_for(None)), 4)
+
+    def test_category_filtered_here_not_in_jackett(self):   # docker#186
+        out = dl.main(["the", "mummy", "movie"])
+        self.assertNotIn("Category[]", [k for k, _ in self.params])
+        self.assertIn("1. **Mummy 1999 YIFY**", out)
+        self.assertIn("2. **Mummy csv**", out)
+        self.assertNotIn("OST", out)
 
     def test_dead_indexer_skipped_and_named(self):
         out = dl.main(["10", "things", "i", "hate", "about", "you", "movie"])
-        self.assertIn("indexers/tpb/results", out)              # the live one answered
+        self.assertIn("Mummy 1999 YIFY", out)                   # the live one answered
         self.assertIn("Skipped: Dead One (no answer in", out)
         self.assertNotIn("audiobookbay", " ".join(self.asked))  # not asked for a movie
         self.assertNotIn("VPN", out)
