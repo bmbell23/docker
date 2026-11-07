@@ -1,0 +1,14 @@
+name: tv-remote
+
+services:
+  tv-remote:
+    container_name: tv-remote
+    build: .
+    image: tv-remote:local
+    restart: unless-stopped
+    # Tailscale only: whoever opens the page drives the TV (same rule as ws-scrcpy).
+    ports:
+      - "100.69.184.113:8020:8020"
+    environment:
+      ROKU_URL: http://10.0.0.97:8060
+    mem_limit: 64m
