@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#111">
+<title>TV Remote</title>
+<style>
+  :root { color-scheme: dark; --bg:#111; --key:#262626; --hi:#6d28d9; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; background:var(--bg); color:#eee; font:16px system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:16px; gap:14px; }
+  h1 { font-size:14px; letter-spacing:.2em; text-transform:uppercase; color:#888; margin:4px 0; }
+  .row { display:flex; gap:10px; justify-content:center; width:100%; max-width:360px; }
+  button { flex:1; border:0; border-radius:14px; background:var(--key); color:#eee; font-size:20px;
+           padding:16px 0; min-height:56px; user-select:none; touch-action:manipulation; }
+  button:active { background:var(--hi); }
+  .pad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; width:100%; max-width:300px; }
+  .pad button { aspect-ratio:1; font-size:26px; }
+  .pad .ok { border-radius:50%; background:#3b0764; font-size:18px; }
+  form { display:flex; gap:8px; width:100%; max-width:360px; }
+  input { flex:1; border:0; border-radius:12px; padding:14px; font-size:16px; background:#222; color:#eee; }
+  form button { flex:0 0 80px; font-size:16px; }
+  .apps { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; max-width:360px; }
+  .apps button { flex:0 0 auto; padding:10px 14px; min-height:0; font-size:14px; }
+  #msg { min-height:1.2em; font-size:13px; color:#f87171; }
+</style></head>
+<body>
+<h1>Roku</h1>
+<div class="row">
+  <button data-k="Power" title="Power (TV via CEC)">⏻</button>
+  <button data-k="Home">⌂</button>
+  <button data-k="Back">↩</button>
+</div>
+<div class="pad">
+  <span></span><button data-k="Up">▲</button><span></span>
+  <button data-k="Left">◀</button><button class="ok" data-k="Select">OK</button><button data-k="Right">▶</button>
+  <span></span><button data-k="Down">▼</button><span></span>
+</div>
+<div class="row">
+  <button data-k="Rev">⏪</button><button data-k="Play">⏯</button><button data-k="Fwd">⏩</button>
+</div>
+<div class="row">
+  <button data-k="VolumeDown">🔉</button><button data-k="VolumeMute">🔇</button><button data-k="VolumeUp">🔊</button>
+</div>
+<div class="row">
+  <button data-k="InstantReplay">↺ 7s</button><button data-k="Info">✱</button><button data-k="Backspace">⌫</button>
+</div>
+<form id="type"><input id="text" placeholder="Type into a search box" autocomplete="off"><button>Send</button></form>
+<div class="apps" id="apps"></div>
+<div id="msg"></div>
+<script>
+const msg = t => document.getElementById('msg').textContent = t || '';
+async function post(path, body) {
+  const r = await fetch(path, {method: 'POST', body});
+  msg(r.ok ? '' : await r.text());
+}
+document.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => {
+  navigator.vibrate?.(15); post('/api/roku/key/' + b.dataset.k);
+}));
+document.getElementById('type').addEventListener('submit', e => {
+  e.preventDefault(); const t = document.getElementById('text');
+  if (t.value) post('/api/roku/text', t.value).then(() => t.value = '');
+});
+fetch('/api/roku/apps').then(r => r.ok ? r.json() : Promise.reject(r.statusText)).then(list => {
+  const box = document.getElementById('apps');
+  for (const a of list) {
+    const b = document.createElement('button'); b.textContent = a.name;
+    b.onclick = () => post('/api/roku/launch/' + a.id); box.append(b);
+  }
+}).catch(e => msg('Couldn\'t list channels: ' + e));
+</script>
+</body></html>

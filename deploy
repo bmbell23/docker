@@ -115,6 +115,7 @@ deploy_dagu() {
 STACKS=(
     "youtube-downloader:docker-compose.yml Dockerfile yt-dlp.conf config.yml"
     "ws-scrcpy:docker-compose.yml Dockerfile config.yaml"
+    "tv-remote:docker-compose.yml Dockerfile server.py index.html"
 )
 
 deploy_stacks() {
